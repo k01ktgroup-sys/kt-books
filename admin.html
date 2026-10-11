@@ -629,16 +629,42 @@ function openScanner(opts){
 function scanMsg(t, kind){ var r=$("scanResult"); if(r) r.innerHTML='<div class="scan-result '+(kind||"ok")+'">'+esc(t)+'</div>'; }
 function startLive(){
   if(typeof jsQR!=="function"){ $("scanMsg").hidden=false; $("scanMsg").innerHTML="<b>読み取り機能を読み込めませんでした。</b><span>通信状態を確認するか、管理番号を入力してください。</span>"; return; }
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ liveUnavailable(); return; }
-  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false}).then(function(stream){
+  if(IN_GAS){ liveUnavailable({name:"InGoogle"}); return; }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ liveUnavailable({name:"NoApi"}); return; }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false})
+  .catch(function(err){ if(err && err.name==="OverconstrainedError") return navigator.mediaDevices.getUserMedia({video:true,audio:false}); throw err; })
+  .then(function(stream){
     if(!scan){ stream.getTracks().forEach(function(t){t.stop();}); return; }
     scan.stream=stream; var v=$("scanVideo"); v.srcObject=stream; v.play().catch(function(){});
     $("scanLive").hidden=false; $("photoBtn").classList.remove("primary"); tick();
   }).catch(liveUnavailable);
 }
-function liveUnavailable(){
+/* Explain why the live camera did not start, in terms the viewer can act on. */
+function liveUnavailable(err){
   var m=$("scanMsg"); if(!m) return; m.hidden=false;
-  m.innerHTML="<b>この画面ではカメラを直接起動できません（Googleの制限）。</b><span>下の「写真を撮って読み取る」を押してQRコードを撮影するか、スマホの普通のカメラでQRラベルを読み取ってください。</span>";
+  var name=(err&&err.name)||"", ua=navigator.userAgent||"", iOS=/iPhone|iPad|iPod/.test(ua);
+  var inApp=/Line\/|FBAN|FBAV|Instagram|MicroMessenger|KAKAOTALK/i.test(ua);
+  var head, body;
+  if(name==="InGoogle"){
+    var url=S.view==="admin"?ADMIN_URL:PAGE_URL;
+    head="このページ（Googleのページ）ではカメラを起動できません。";
+    body='カメラが使えるページを開いてください：<br><a href="'+esc(url)+'" target="_top" class="mono" style="word-break:break-all">'+esc(url)+'</a><br>または、下の「写真を撮って読み取る」を使ってください。';
+  } else if(inApp){
+    head="LINEなどのアプリ内の画面では、カメラを起動できません。";
+    body="画面右上（または右下）のメニューから「ブラウザで開く」「Safariで開く」「Chromeで開く」を選び、開き直してください。";
+  } else if(name==="NotAllowedError"||name==="SecurityError"){
+    head="カメラの使用が許可されていません。";
+    body = iOS
+      ? "iPhoneの場合：アドレスバーの「ぁあ」（または「AA」）→「Webサイトの設定」→「カメラ」→「許可」にしてから、ページを再読み込みしてください。直らない場合は「設定」アプリ →「Safari」→「カメラ」→「許可」。"
+      : "Androidの場合：アドレスバー左のマーク（鍵や設定のアイコン）→「権限」または「サイトの設定」→「カメラ」→「許可」にしてから、ページを再読み込みしてください。";
+  } else if(name==="NotFoundError"||name==="OverconstrainedError"){
+    head="この端末でカメラが見つかりません。"; body="カメラ付きのスマホで開いてください。";
+  } else if(name==="NotReadableError"||name==="AbortError"){
+    head="カメラを起動できませんでした。"; body="ほかのアプリがカメラを使っていないか確認し、もう一度お試しください。";
+  } else {
+    head="カメラを起動できませんでした。"; body="ブラウザ（Safari・Chrome）で開いているか確認してください。（"+esc(name||"不明")+"）";
+  }
+  m.innerHTML="<b>"+esc(head)+"</b><span>"+body+"</span><span class=\"small\">下の「写真を撮って読み取る」でも読み取れます。</span>";
   $("photoBtn").classList.add("primary");
 }
 function tick(){

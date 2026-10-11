@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ビジネス書 貸出管理</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+/* Layout: sticky header (brand stripe + app name + selected employee) → tab row → one content column (max 960px).
+   Palette follows the KT Group site: cream ground, dark-brown ink, green / orange-red / yellow / orange / sky accents, pill buttons, round cards. */
+:root{
+  --bg:#fffbe8; --surface:#ffffff; --surface-2:#fbf3d9; --line:#eadfc0;
+  --fg:#231815; --muted:#6e625c;
+  --green:#007237; --red:#e2470e; --yellow:#f9be00; --orange:#ed7700; --sky:#64b6d6;
+  --accent:#e2470e; --accent-fg:#ffffff; --accent-soft:#fde8dd;
+  --brand:#007237; --brand-soft:#e3f1e8;
+  --ok:#007237; --ok-soft:#e3f1e8; --busy:#9a5200; --busy-soft:#fff1c7;
+  --bad:#b4231b; --bad-soft:#fde3e0; --off:#6e625c; --off-soft:#efe9e2;
+  --label-bg:#ffffff; --label-line:#231815;
+  --shadow:0 2px 0 rgba(35,24,21,.06),0 6px 18px rgba(35,24,21,.06);
+  --font:"Noto Sans JP","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",sans-serif;
+  --mono:"Outfit","Noto Sans JP",sans-serif;
+  --r:16px; color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:17px;line-height:1.65}
+h1,h2,h3{text-wrap:balance;line-height:1.35;margin:0}
+h2{font-size:1.3rem} h3{font-size:1.08rem} p{margin:0}
+.panel>h2:first-child,.panel>div:first-child>h2{display:flex;align-items:center;gap:10px}
+.panel>h2:first-child::before,.panel>div:first-child>h2::before{content:"";flex:none;width:8px;height:1.1em;border-radius:99px;background:var(--orange)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:.9rem}
+[hidden]{display:none!important}
+
+.sample-strip{background:var(--busy-soft);color:var(--busy);font-size:.85rem;padding:6px 16px;text-align:center;font-weight:700}
+header.top{position:sticky;top:0;z-index:20;background:var(--surface);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.stripe{display:grid;grid-template-columns:3fr 1fr 4fr 2fr 1.5fr;height:6px}
+.stripe i:nth-child(1){background:var(--yellow)}.stripe i:nth-child(2){background:var(--green)}.stripe i:nth-child(3){background:var(--red)}.stripe i:nth-child(4){background:var(--orange)}.stripe i:nth-child(5){background:var(--sky)}
+.top-inner{max-width:960px;margin:0 auto;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.brand{display:flex;flex-direction:column}
+.brand b{font-size:1.08rem;letter-spacing:.04em} .brand span{font-size:.8rem;color:var(--brand);font-weight:700}
+.who{display:flex;align-items:center;gap:10px;background:var(--brand-soft);border-radius:999px;padding:5px 5px 5px 14px;min-width:0}
+.who .lbl{font-size:.74rem;color:var(--muted);display:block;line-height:1.2}
+.who .nm{font-weight:700;font-size:1.02rem;line-height:1.3}
+.who.none{background:var(--bad-soft)}
+nav.tabs{max-width:960px;margin:0 auto;padding:0 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+nav.tabs button{border:0;background:none;padding:10px 0 12px;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;font-size:1rem;min-height:48px;white-space:nowrap}
+@media (max-width:480px){nav.tabs button{font-size:.88rem}}
+nav.tabs button[aria-current="page"]{color:var(--brand);border-bottom-color:var(--brand)}
+.badge{display:inline-block;min-width:1.4em;padding:0 .35em;border-radius:999px;background:var(--bad);color:#fff;font-size:.72rem;margin-left:3px;line-height:1.5}
+.badge.n{background:var(--brand);color:#fff}
+main{max-width:960px;margin:0 auto;padding:20px 16px 64px;display:flex;flex-direction:column;gap:16px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:10px 22px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-weight:700;cursor:pointer;font-size:1rem;text-decoration:none;color:var(--fg)}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);box-shadow:0 3px 0 #b8380a}
+.btn.primary:active{transform:translateY(2px);box-shadow:none}
+.btn.green{background:var(--green);color:#fff;border-color:var(--green);box-shadow:0 3px 0 #00542a}
+.btn.danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+.btn.sm{min-height:40px;padding:6px 14px;font-size:.92rem}
+.btn.big{min-height:56px;font-size:1.1rem;width:100%}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn-row{display:flex;flex-wrap:wrap;gap:10px}
+.btn-row.nowrap{flex-wrap:nowrap}
+.qr-btn{display:flex;align-items:center;gap:14px;width:100%;min-height:64px;padding:12px 18px;border-radius:var(--r);border:2px solid var(--green);background:var(--brand-soft);cursor:pointer;text-align:left;color:var(--fg)}
+.qr-btn svg{flex:none;width:34px;height:34px;color:var(--green)}
+.qr-btn b{display:block;font-size:1.08rem}
+.qr-btn span{font-size:.86rem;color:var(--muted)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.notice{border-radius:var(--r);padding:12px 16px;display:flex;flex-direction:column;gap:4px}
+.notice.info{background:var(--accent-soft)} .notice.warn{background:var(--busy-soft)} .notice.bad{background:var(--bad-soft)} .notice.plain{background:var(--surface-2)}
+.pill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;font-weight:700;font-size:.86rem;white-space:nowrap}
+.st-ok{background:var(--ok-soft);color:var(--ok)} .st-busy{background:var(--busy-soft);color:var(--busy)}
+.st-bad{background:var(--bad-soft);color:var(--bad)} .st-off{background:var(--off-soft);color:var(--off)}
+.chip-sample{display:inline-block;font-size:.7rem;font-weight:700;color:var(--busy);border:1px solid currentColor;border-radius:4px;padding:0 5px;line-height:1.5;vertical-align:middle;margin-left:4px}
+.spine{font-family:var(--mono);font-weight:700;background:var(--label-bg);border:1px solid var(--label-line);border-radius:4px;padding:2px 8px;font-size:.88rem;letter-spacing:.03em;white-space:nowrap}
+
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label,.field .lab{font-size:.9rem;font-weight:700}
+.field .hint{font-size:.82rem;color:var(--muted)}
+input[type=text],input[type=password],input[type=date],input[type=search],input[type=number],select{width:100%;min-height:48px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 12px;font-size:1rem}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{min-height:44px;padding:6px 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-weight:700;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--green);color:#fff;border-color:var(--green)}
+
+.list{display:flex;flex-direction:column;gap:10px}
+.title-card{display:grid;grid-template-columns:1fr auto;gap:4px 14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;cursor:pointer;text-align:left;width:100%}
+.title-card:hover{border-color:var(--accent)}
+.title-card .t{font-weight:700;font-size:1.05rem;min-width:0}
+.title-card .m{font-size:.9rem;color:var(--muted);grid-column:1/3}
+.count{font-size:.95rem;color:var(--muted)}
+.copy{border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+.copy.hl{border:2px solid var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.copy-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:8px 18px;margin:0}
+dl.kv dt{color:var(--muted);font-weight:700} dl.kv dd{margin:0;min-width:0}
+@media (max-width:480px){dl.kv{grid-template-columns:1fr;gap:0}dl.kv dd{margin-bottom:8px}}
+.back{align-self:flex-start}
+
+.loan{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px}
+.loan.over{border:2px solid var(--bad)}
+.due{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.due .d{font-size:1.35rem;font-weight:700}
+.left{font-weight:700} .left.ok{color:var(--ok)} .left.bad{color:var(--bad)} .left.busy{color:var(--busy)}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+td.wrap{white-space:normal;min-width:170px}
+th{background:var(--surface-2);font-size:.84rem}
+tr:last-child td{border-bottom:0}
+tr.grp td{background:var(--surface-2);font-weight:700}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media (max-width:640px){.tiles{grid-template-columns:repeat(2,1fr)}}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
+.tile .n{font-family:var(--mono);font-size:1.7rem;font-weight:600;line-height:1.2}
+.tile .l{font-size:.86rem;color:var(--muted);font-weight:700}
+.tile.alert{border-color:var(--bad);background:var(--bad-soft)} .tile.alert .n{color:var(--bad)}
+.subtabs{display:flex;flex-wrap:wrap;gap:6px}
+.subtabs button{min-height:44px;padding:6px 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-weight:700;cursor:pointer}
+.subtabs button[aria-pressed="true"]{background:var(--green);color:#fff;border-color:var(--green)}
+.admin-flag{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--green);color:#fff;border-radius:var(--r);padding:10px 16px;font-size:.92rem}
+.admin-flag .btn{min-height:36px;padding:4px 12px;font-size:.85rem}
+.progress{height:12px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--green)}
+
+ol.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:10px}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start}
+ol.steps li::before{content:counter(s);display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--green);color:#fff;font-weight:700;font-family:var(--mono)}
+ul.rules{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+
+.overlay{position:fixed;inset:0;background:rgba(10,20,18,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;padding:12px}
+@media (min-width:640px){.overlay{align-items:center}}
+.modal{background:var(--surface);border-radius:14px;width:100%;max-width:560px;max-height:calc(100% - 8px);overflow:auto;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.confirm-box{border:2px solid var(--accent);border-radius:var(--r);padding:14px 16px;display:grid;grid-template-columns:max-content 1fr;gap:8px 14px;margin:0}
+.confirm-box dt{color:var(--muted);font-weight:700} .confirm-box dd{margin:0;font-weight:700;min-width:0}
+.check{display:flex;gap:10px;align-items:flex-start;background:var(--surface-2);padding:12px;border-radius:8px;cursor:pointer}
+.check input{width:24px;height:24px;flex:none;margin-top:2px}
+.emp-pick{display:grid;gap:10px}
+.emp-pick button{min-height:62px;text-align:left;padding:10px 16px;border-radius:var(--r);border:1px solid var(--line);background:var(--surface);cursor:pointer;display:flex;flex-direction:column}
+.emp-pick button[aria-pressed="true"]{border:2px solid var(--accent);background:var(--accent-soft)}
+.emp-pick .n{font-weight:700;font-size:1.08rem} .emp-pick .d{font-size:.86rem;color:var(--muted)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:520px){.form-grid{grid-template-columns:1fr}}
+.form-grid .full{grid-column:1/-1}
+.err{color:var(--bad);font-weight:700;font-size:.92rem}
+
+/* scanner */
+.scan-live{position:relative;border-radius:var(--r);overflow:hidden;background:#000;aspect-ratio:4/3;max-width:100%}
+.scan-live video{width:100%;height:100%;object-fit:cover;display:block}
+.scan-live .frame{position:absolute;inset:18% 22%;border:3px solid #fff;border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+.scan-result{border-radius:var(--r);padding:10px 14px;font-weight:700}
+.scan-result.ok{background:var(--ok-soft);color:var(--ok)} .scan-result.ng{background:var(--bad-soft);color:var(--bad)} .scan-result.warn{background:var(--busy-soft);color:var(--busy)}
+.photo-btn{position:relative;overflow:hidden}
+.scan-book{border:2px solid var(--green)}
+.done-panel{align-items:center;text-align:center;border:2px solid var(--green)}
+.done-mark{width:64px;height:64px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;font-size:2rem;font-weight:700}
+.photo-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* labels */
+.labels{display:grid;grid-template-columns:repeat(auto-fill,minmax(58mm,1fr));gap:4mm}
+.label{border:1px dashed var(--line);border-radius:6px;padding:3mm;display:grid;grid-template-columns:24mm 1fr;gap:3mm;align-items:center;background:#fff;color:#111;break-inside:avoid}
+.label .q svg,.label .q img{width:24mm;height:24mm;display:block}
+.label .id{font-family:var(--mono);font-weight:600;font-size:13pt;letter-spacing:.02em}
+.label .tt{font-size:8pt;line-height:1.35;max-height:3.9em;overflow:hidden}
+.label .org{font-size:7pt;color:#555}
+#printArea{display:none}
+@media print{
+  body>*:not(#printArea){display:none!important}
+  #printArea{display:block}
+  body{background:#fff}
+  .label{border:1px solid #bbb}
+  @page{size:A4;margin:10mm}
+}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:60;background:var(--green);color:#fff;padding:12px 22px;border-radius:999px;font-weight:700;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
+.toast.ng{background:var(--bad)}
+.empty{padding:26px 16px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:var(--r)}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<div class="sample-strip" id="sampleStrip" hidden>サンプルデータが登録されています（架空の書籍・従業員・貸出）。本番前に総務部の「設定」から削除してください。</div>
+<header class="top">
+  <div class="stripe" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="top-inner">
+    <div class="brand"><b>ビジネス書 貸出管理</b><span>本社 総務部</span></div>
+    <div class="who none" id="who">
+      <div><span class="lbl">利用者（本人確認ではありません）</span><span class="nm" id="whoName">名前が選ばれていません</span></div>
+      <button class="btn sm primary" id="whoBtn" type="button">名前を選ぶ</button>
+    </div>
+  </div>
+  <nav class="tabs" id="tabs" aria-label="画面の切り替え"></nav>
+</header>
+<main id="main"><div class="empty"><span class="spin"></span>　データを読み込んでいます…</div></main>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+<div id="printArea"></div>
+
+<script>
+(function(){
+"use strict";
+var MAX_LOANS=2, MAX_EXT=1, LOAN_DAYS=14, EXT_DAYS=14;
+var LS_EMP="shoko.emp", LS_TOKEN="shoko.adminToken";
+/* Inside Apps Script the page talks to the server through google.script.run.
+   Hosted elsewhere (the admin page on GitHub Pages, where the camera works) it POSTs to the published web app instead. */
+var API_URL="https://script.google.com/macros/s/AKfycbyF9c08dNZ2K-3_jaeZaswShQkHdb68qyf__k_dvPfkKSGNHo-sS-w7siH9xbXkl1EWUQ/exec";
+var IN_GAS=!!(window.google && google.script && google.script.run);
+/* The camera-capable pages on GitHub Pages: employees use the top page, 総務部 uses admin.html. QR labels point to the top page. */
+var PAGE_URL="https://k01ktgroup-sys.github.io/kt-books/";
+var ADMIN_URL=PAGE_URL+"admin.html";
+var QR_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>';
+
+var S={ loaded:false, loadErr:null, today:"", url:"", books:{}, emps:{}, loans:{},
+  view:"books", group:null, copyId:null, empId:null, token:null,
+  q:"", status:"all", cat:"", adminTab:"scan", histQ:"", histStatus:"all", scanCopy:null,
+  inv:null, labelSel:{}, scanNote:null };
+try{ S.empId=localStorage.getItem(LS_EMP); S.token=localStorage.getItem(LS_TOKEN); }catch(e){}
+
+/* ---------- server bridge ---------- */
+function call(action, payload){
+  return new Promise(function(res, rej){
+    function done(txt){
+      var r; try{ r=JSON.parse(txt); }catch(e){ rej({code:"parse"}); return; }
+      if(r.ok) res(r.data);
+      else rej({ code:r.error.code, userMessage: r.error.user ? r.error.message : null, message:r.error.message });
+    }
+    function fail(err){ rej({ code:"network", message:String(err&&err.message||err) }); }
+    if(IN_GAS){
+      google.script.run.withSuccessHandler(done).withFailureHandler(fail).api(action, payload||{});
+    } else {
+      fetch(API_URL, { method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({action:action, payload:payload||{}}) })
+        .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.text(); })
+        .then(done, fail);
+    }
+  });
+}
+function applyState(st){
+  if(!st) return;
+  S.today=st.today; S.url=st.url;
+  S.books={}; st.books.forEach(function(b){ S.books[b.id]=b; });
+  S.emps={}; st.emps.forEach(function(e){ S.emps[e.id]=e; });
+  S.loans={}; st.loans.forEach(function(l){ S.loans[l.loanNo]=l; });
+  S.loaded=true; S.loadErr=null;
+}
+function refresh(){
+  return call("state").then(function(st){ applyState(st); if(!modalOpen) render(); else renderHeader(); })
+    .catch(function(e){ if(!S.loaded){ S.loadErr=e; render(); } });
+}
+
+/* ---------- helpers ---------- */
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+function $(id){ return document.getElementById(id); }
+function addDays(ymd,n){ var p=ymd.split("-").map(Number); return new Date(Date.UTC(p[0],p[1]-1,p[2]+n)).toISOString().slice(0,10); }
+function diffDays(a,b){ var pa=a.split("-").map(Number), pb=b.split("-").map(Number); return Math.round((Date.UTC(pb[0],pb[1]-1,pb[2])-Date.UTC(pa[0],pa[1]-1,pa[2]))/86400000); }
+var WD=["日","月","火","水","木","金","土"];
+function jp(y){ if(!y) return "—"; var p=y.split("-").map(Number); return p[0]+"年"+p[1]+"月"+p[2]+"日（"+WD[new Date(Date.UTC(p[0],p[1]-1,p[2])).getUTCDay()]+"）"; }
+function js(y){ return y ? y.replace(/-/g,"/") : "—"; }
+function chip(o){ return o&&o.sample ? '<span class="chip-sample">サンプル</span>' : ""; }
+function groupOf(id){ return String(id).replace(/-\d+$/,""); }
+function copyNo(id){ var m=/-(\d+)$/.exec(id); return m?m[1]:"1"; }
+function loanArr(){ return Object.keys(S.loans).map(function(k){ return S.loans[k]; }); }
+function bookArr(){ return Object.keys(S.books).map(function(k){ return S.books[k]; }).sort(function(a,b){ return cmpId(a.id,b.id); }); }
+function cmpId(a,b){ var ga=groupOf(a), gb=groupOf(b); if(ga!==gb) return ga<gb?-1:1; return Number(copyNo(a))-Number(copyNo(b)); }
+function empArr(){ return Object.keys(S.emps).map(function(k){ return S.emps[k]; }).sort(function(a,b){ return a.id<b.id?-1:1; }); }
+function activeOfBook(id){ return loanArr().filter(function(l){ return l.status==="active" && l.bookId===id; })[0]||null; }
+function activeOfEmp(id){ return loanArr().filter(function(l){ return l.status==="active" && l.empId===id; }).sort(function(a,b){ return a.dueDate<b.dueDate?-1:1; }); }
+function isOver(l){ return l.status==="active" && S.today>l.dueDate; }
+function curEmp(){ var e=S.empId&&S.emps[S.empId]; return e && e.active ? e : null; }
+function empName(id){ var e=S.emps[id]; return e?e.name:id; }
+function bookTitle(id){ var b=S.books[id]; return b?b.title:id; }
+function copyStatus(b){
+  if(b.suspended) return {key:"off",label:"利用停止",cls:"st-off"};
+  var l=activeOfBook(b.id);
+  if(l) return isOver(l)?{key:"busy",label:"貸出中（期限超過）",cls:"st-bad",loan:l}:{key:"busy",label:"貸出中",cls:"st-busy",loan:l};
+  return {key:"ok",label:"貸出可能",cls:"st-ok"};
+}
+function groups(){
+  var m={}; bookArr().forEach(function(b){ var g=groupOf(b.id); (m[g]=m[g]||{id:g,copies:[]}).copies.push(b); });
+  return Object.keys(m).sort().map(function(k){ var g=m[k], f=g.copies[0];
+    g.title=f.title; g.author=f.author; g.category=f.category; g.sample=f.sample;
+    g.avail=g.copies.filter(function(c){ return copyStatus(c).key==="ok"; }).length;
+    g.lent=g.copies.filter(function(c){ return copyStatus(c).key==="busy"; }).length;
+    g.key = g.avail ? "ok" : g.lent ? "busy" : "off"; return g; });
+}
+function parseCode(text){
+  text=String(text||"").trim();
+  var m=/[?&]b=([A-Za-z0-9-]+)/.exec(text); if(m) return m[1].toUpperCase();
+  if(/^[A-Za-z]{1,4}-\d{1,4}(-\d{1,3})?$/.test(text)) return text.toUpperCase();
+  return null;
+}
+function qrUrl(id){ return PAGE_URL+"?b="+encodeURIComponent(id); }
+
+/* ---------- toast / modal ---------- */
+function toast(msg, ng){ var r=$("toastRoot"); r.innerHTML='<div class="toast'+(ng?" ng":"")+'" role="status">'+esc(msg)+'</div>'; clearTimeout(toast.t); toast.t=setTimeout(function(){ r.innerHTML=""; },3800); }
+var modalOpen=false, modalCleanup=null, modalLocked=false;
+function openModal(html, mount){
+  if(modalCleanup){ modalCleanup(); modalCleanup=null; }
+  modalOpen=true;
+  $("modalRoot").innerHTML='<div class="overlay" id="ov"><div class="modal" role="dialog" aria-modal="true">'+html+'</div></div>';
+  $("ov").addEventListener("click",function(e){ if(e.target.id==="ov" && !modalLocked) closeModal(); });
+  if(mount) mount();
+  var f=$("modalRoot").querySelector("[autofocus]"); if(f) f.focus();
+}
+function closeModal(){ if(modalCleanup){ modalCleanup(); modalCleanup=null; } modalOpen=false; modalLocked=false; $("modalRoot").innerHTML=""; render(); }
+document.addEventListener("keydown",function(e){ if(e.key==="Escape" && modalOpen && !modalLocked) closeModal(); });
+
+/* Run a server write. Success → close + toast. Failure → keep dialog, explain, allow retry (never shows success). */
+function runSave(btn, action, payload, okMsg, after){
+  modalLocked=true;
+  var orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> 保存しています…';
+  return call(action, payload).then(function(data){
+    modalLocked=false;
+    if(data && data.state) applyState(data.state);
+    if(after) after(data);
+    closeModal(); toast(typeof okMsg==="function"?okMsg(data):okMsg);
+  }).catch(function(err){
+    modalLocked=false; btn.disabled=false; btn.innerHTML=orig;
+    if(err.code==="auth"){ S.token=null; try{ localStorage.removeItem(LS_TOKEN); }catch(e){} }
+    var box=$("saveErr"); if(!box) { toast(err.userMessage||"保存できませんでした。もう一度お試しください。",true); return; }
+    box.hidden=false;
+    box.innerHTML = err.userMessage
+      ? '<div class="notice bad" role="alert"><b>この操作はできませんでした。</b><span>'+esc(err.userMessage)+'</span></div>'
+      : '<div class="notice bad" role="alert"><b>保存できませんでした。登録は完了していません。</b><span>通信状態を確認して、もう一度「確定する」を押してください。続けて失敗する場合は総務部へ連絡してください。（'+esc(err.code)+'）</span></div>';
+    if(err.userMessage && err.code!=="auth") btn.disabled=true;
+    refresh();
+  });
+}
+
+/* ---------- header ---------- */
+function renderHeader(){
+  var e=curEmp(), who=$("who");
+  if(e){ who.classList.remove("none"); $("whoName").textContent=e.name+"（"+e.dept+"）"; $("whoBtn").textContent="変更"; }
+  else { who.classList.add("none"); $("whoName").textContent="名前が選ばれていません"; $("whoBtn").textContent="名前を選ぶ"; }
+  var mine=e?activeOfEmp(e.id):[], myOver=mine.filter(isOver).length, over=loanArr().filter(isOver).length;
+  var tabs=[["books","本をさがす"],["mine","自分の貸出"+(myOver?'<span class="badge">!</span>':mine.length?'<span class="badge n">'+mine.length+'</span>':"")],["rules","ルール"],["admin","総務部"+(S.token&&over?'<span class="badge">'+over+'</span>':"")]];
+  $("tabs").innerHTML=tabs.map(function(t){ var cur=S.view===t[0]||((S.view==="title"||S.view==="copy"||S.view==="scan")&&t[0]==="books"); return '<button type="button" data-tab="'+t[0]+'"'+(cur?' aria-current="page"':"")+'>'+t[1]+'</button>'; }).join("");
+  $("sampleStrip").hidden = !bookArr().some(function(b){ return b.sample; });
+}
+
+/* ---------- main render ---------- */
+function render(){
+  renderHeader();
+  var main=$("main"), ae=document.activeElement, fid=ae&&ae.id&&main.contains(ae)?ae.id:null, sel=null;
+  if(fid && ae.selectionStart!=null){ try{ sel=[ae.selectionStart,ae.selectionEnd]; }catch(e){} }
+  var html;
+  if(!S.loaded) html = S.loadErr
+    ? '<div class="notice bad"><b>データを読み込めませんでした。</b><span>通信状態を確認して、ページを再読み込みしてください。（'+esc(S.loadErr.userMessage||S.loadErr.code)+'）</span></div><button class="btn" type="button" data-act="reload">再読み込み</button>'
+    : '<div class="empty"><span class="spin"></span>　データを読み込んでいます…</div>';
+  else if(S.view==="title") html=viewTitle();
+  else if(S.view==="copy") html=viewCopy();
+  else if(S.view==="scan") html=viewScanned();
+  else if(S.view==="mine") html=viewMine();
+  else if(S.view==="rules") html=viewRules();
+  else if(S.view==="admin") html=S.token?viewAdmin():viewLogin();
+  else html=viewBooks();
+  main.innerHTML=html;
+  if(fid){ var el=$(fid); if(el){ el.focus(); if(sel&&el.setSelectionRange){ try{ el.setSelectionRange(sel[0],sel[1]); }catch(e){} } } }
+}
+function qrButton(sub){ return '<button type="button" class="qr-btn" data-act="scanUser">'+QR_ICON+'<div><b>QRコードで借りる・返す</b><span>'+sub+'</span></div></button>'; }
+
+/* ----- 書籍一覧 ----- */
+function viewBooks(){
+  var gs=groups(); if(!gs.length) return '<div class="empty">まだ書籍が登録されていません。</div>';
+  var cats=Array.from(new Set(gs.map(function(g){return g.category;}))).sort();
+  var q=S.q.trim().toLowerCase();
+  var rows=gs.filter(function(g){
+    if(S.status!=="all" && g.key!==S.status) return false;
+    if(S.cat && g.category!==S.cat) return false;
+    if(q && (g.title+" "+g.author+" "+g.category+" "+g.copies.map(function(c){return c.id;}).join(" ")).toLowerCase().indexOf(q)<0) return false;
+    return true; });
+  var top = curEmp() ? "" : '<div class="notice warn"><b>はじめに、上の「名前を選ぶ」から自分の名前を選んでください。</b></div>';
+  return top + qrButton("本のラベルのQRコードを読み取ると、その本の画面が開きます") +
+  '<section class="panel"><h2>本をさがす</h2>'+
+  '<div class="field"><label for="q">書名・著者・分類・管理番号で検索</label><input type="search" id="q" placeholder="例：マネジメント、BK-005" value="'+esc(S.q)+'"></div>'+
+  '<div class="field"><label for="cat">分類</label><select id="cat"><option value="">すべての分類</option>'+cats.map(function(c){return '<option'+(S.cat===c?" selected":"")+'>'+esc(c)+'</option>';}).join("")+'</select></div>'+
+  '<div class="field"><span class="lab">貸出状況</span><div class="seg" role="group">'+[["all","すべて"],["ok","貸出可能"],["busy","貸出中"],["off","利用停止"]].map(function(s){ return '<button type="button" data-status="'+s[0]+'" aria-pressed="'+(S.status===s[0])+'">'+s[1]+'</button>'; }).join("")+'</div></div></section>'+
+  '<p class="count">'+rows.length+' タイトルを表示中（全 '+gs.length+' タイトル・'+bookArr().length+' 冊）</p>'+
+  (rows.length?'<div class="list">'+rows.map(function(g){
+    var n=g.copies.length, pill = g.key==="ok" ? '<span class="pill st-ok">貸出可能 '+g.avail+'/'+n+'冊</span>' : g.key==="busy" ? '<span class="pill st-busy">すべて貸出中</span>' : '<span class="pill st-off">利用停止</span>';
+    return '<button type="button" class="title-card" data-group="'+esc(g.id)+'"><span class="t">'+esc(g.title)+chip(g)+'</span>'+pill+'<span class="m">'+esc(g.author)+'　／　'+esc(g.category)+'　／　<span class="mono">'+esc(g.id)+'</span>（'+n+'冊）</span></button>';
+  }).join("")+'</div>':'<div class="empty">条件に合う本はありません。</div>');
+}
+
+/* ----- 書籍詳細（タイトル単位：全冊） ----- */
+function copyCard(b, hl){
+  var st=copyStatus(b), e=curEmp(), act="";
+  if(st.key==="off") act='<div class="notice plain"><b>利用停止中のため借りられません。</b>'+(b.suspendReason?'<span>理由：'+esc(b.suspendReason)+'</span>':"")+'</div>';
+  else if(st.loan && e && st.loan.empId===e.id) act='<div class="notice info"><b>この本はあなたが借りています（返却期限 '+jp(st.loan.dueDate)+'）。</b></div><div class="btn-row"><button class="btn primary" data-act="return" data-id="'+esc(st.loan.loanNo)+'" type="button">返却する</button><button class="btn" data-act="extend" data-id="'+esc(st.loan.loanNo)+'" type="button"'+((st.loan.extensions>=MAX_EXT||isOver(st.loan))?" disabled":"")+'>延長する</button></div>';
+  else if(st.loan) act='<p class="small muted">ほかの人が借りています。返却予定：'+jp(st.loan.dueDate)+'</p>';
+  else if(!e) act='<button class="btn primary" data-act="pickEmp" type="button">名前を選んでから借りる</button>';
+  else act='<button class="btn primary" data-act="borrow" data-id="'+esc(b.id)+'" type="button">この本（'+esc(b.id)+'）を借りる</button>';
+  return '<article class="copy'+(hl?" hl":"")+'"><div class="copy-head"><span class="spine">'+esc(b.id)+'</span><span class="pill '+st.cls+'">'+st.label+'</span>'+(hl?'<b class="small" style="color:var(--accent)">読み取った本</b>':"")+'</div>'+
+    '<dl class="kv"><dt>管理番号</dt><dd class="mono">'+esc(b.id)+'</dd><dt>保管場所</dt><dd>'+esc(b.location)+'</dd><dt>貸出状況</dt><dd>'+st.label+(st.loan?'（返却期限 '+js(st.loan.dueDate)+'）':"")+'</dd></dl>'+act+'</article>';
+}
+function viewTitle(){
+  var g=groups().filter(function(x){ return x.id===S.group; })[0];
+  if(!g) return '<button class="btn back" data-go="books" type="button">← 一覧へ戻る</button><div class="empty">この本は見つかりません。</div>';
+  var copies=g.copies.slice();
+  if(S.copyId){ copies.sort(function(a,b){ return a.id===S.copyId?-1:b.id===S.copyId?1:cmpId(a.id,b.id); }); }
+  return '<button class="btn back" data-go="books" type="button">← 一覧へ戻る</button>'+
+  '<section class="panel"><h2>'+esc(g.title)+chip(g)+'</h2><dl class="kv"><dt>書籍コード</dt><dd class="mono">'+esc(g.id)+'</dd><dt>著者</dt><dd>'+esc(g.author)+'</dd><dt>分類</dt><dd>'+esc(g.category)+'</dd><dt>所蔵</dt><dd>'+g.copies.length+' 冊（貸出可能 '+g.avail+' 冊）</dd></dl>'+
+  '<p class="small muted">同じ本が複数あるときは、<b>手に取った本のラベルの管理番号</b>と同じものを選んでください。QRコードを読み取ると間違えません。</p></section>'+
+  '<div class="list">'+copies.map(function(b){ return copyCard(b, b.id===S.copyId); }).join("")+'</div>';
+}
+function viewCopy(){
+  var b=S.books[S.copyId];
+  if(!b) return '<button class="btn back" data-go="books" type="button">← 一覧へ戻る</button><div class="notice bad"><b>管理番号「'+esc(S.copyId)+'」の本は台帳にありません。</b><span>ラベルが正しいか確認し、総務部へ連絡してください。</span></div>';
+  S.group=groupOf(b.id); S.view="title"; return viewTitle();
+}
+
+/* ----- QRで開いた本：この画面だけで借りる・返す ----- */
+function viewScanned(){
+  var id=S.copyId, b=S.books[id];
+  var back='<button class="btn back" data-go="books" type="button">← 本の一覧へ</button>';
+  if(!b) return back+'<div class="notice bad"><b>管理番号「'+esc(id)+'」の本は台帳にありません。</b><span>ラベルが正しいか確認し、総務部へ連絡してください。</span></div>';
+  if(S.scanDone) return '<section class="panel done-panel"><div class="done-mark" aria-hidden="true">&#10003;</div><h2>'+esc(S.scanDone.title)+'</h2><p>'+esc(S.scanDone.text)+'</p>'+
+    '<div class="btn-row" style="justify-content:center"><button class="btn green" data-go="mine" type="button">自分の貸出を見る</button><button class="btn" data-act="scanUser" type="button">続けて別の本を読み取る</button></div></section>';
+  var st=copyStatus(b), e=curEmp(), emps=empArr().filter(function(x){ return x.active; });
+  var who='<div class="field"><label for="scanEmp">あなたの名前 <span class="small muted">（本人確認ではありません。必ず自分の名前を選んでください）</span></label>'+
+    '<select id="scanEmp"><option value="">― 名前を選んでください ―</option>'+emps.map(function(x){ return '<option value="'+esc(x.id)+'"'+(e&&e.id===x.id?" selected":"")+'>'+esc(x.name)+'（'+esc(x.dept)+'）</option>'; }).join("")+'</select></div>';
+  var head='<section class="panel scan-book"><div class="copy-head"><span class="spine">'+esc(b.id)+'</span><span class="pill '+st.cls+'">'+st.label+'</span>'+chip(b)+'</div>'+
+    '<h2>'+esc(b.title)+'</h2><p class="small muted">'+esc(b.author)+'　／　保管場所：'+esc(b.location)+'</p></section>';
+  var act;
+  if(st.key==="off") act='<div class="notice plain"><b>この本は利用停止中のため借りられません。</b>'+(b.suspendReason?'<span>理由：'+esc(b.suspendReason)+'</span>':"")+'</div>';
+  else if(!e) act=who+'<p class="small">名前を選ぶと、「借りる」「返却する」のボタンが表示されます。</p>';
+  else if(st.loan && st.loan.empId===e.id){
+    var l=st.loan, over=isOver(l), canExt=l.extensions<MAX_EXT && !over;
+    act=who+'<dl class="confirm-box"><dt>利用者</dt><dd>'+esc(e.name)+'</dd><dt>本</dt><dd>'+esc(b.id)+' '+esc(b.title)+'</dd><dt>返却期限</dt><dd'+(over?' style="color:var(--bad)"':"")+'>'+jp(l.dueDate)+(over?'（期限超過）':"")+'</dd><dt>戻す書棚</dt><dd>'+esc(b.location)+'</dd></dl>'+
+      '<label class="check" for="scanShelved"><input type="checkbox" id="scanShelved"><span><b>本を指定の書棚へ戻しました</b></span></label>'+
+      '<button class="btn big primary" id="scanGo" data-act="inlineReturn" data-id="'+esc(l.loanNo)+'" type="button" disabled>返却する</button>'+
+      (canExt?'<button class="btn" data-act="inlineExtend" data-id="'+esc(l.loanNo)+'" type="button">返さずに延長する（'+js(addDays(l.originalDueDate||l.dueDate,EXT_DAYS))+' まで）</button>':'<p class="small muted">'+(over?"期限を過ぎているため延長できません。":"延長は1回までです（延長済み）。")+'</p>');
+  }
+  else if(st.loan) act=who+'<div class="notice warn"><b>この本はほかの人が借りています。</b><span>返却予定：'+jp(st.loan.dueDate)+'。自分が借りた本の場合は、上の名前が正しいか確認してください。</span></div>';
+  else {
+    var n=activeOfEmp(e.id).length, d=S.today;
+    act=who+'<dl class="confirm-box"><dt>利用者</dt><dd>'+esc(e.name)+'（'+esc(e.dept)+'）</dd><dt>本</dt><dd>'+esc(b.id)+' '+esc(b.title)+'</dd><dt>貸出日</dt><dd>'+jp(d)+'</dd><dt>返却期限</dt><dd>'+jp(addDays(d,LOAN_DAYS))+'</dd></dl>'+
+      (n>=MAX_LOANS?'<div class="notice bad"><b>貸出上限（1人'+MAX_LOANS+'冊）に達しています。</b><span>いま '+n+' 冊借りています。先に返却してください。</span></div>':
+      '<button class="btn big primary" id="scanGo" data-act="inlineBorrow" data-id="'+esc(b.id)+'" type="button">この内容で借りる</button><p class="small muted">名前と本が正しいことを確認してから押してください。</p>');
+  }
+  return head+'<section class="panel">'+act+'<div id="scanErr" hidden></div></section>'+back;
+}
+function inlineSave(btn, action, payload, done){
+  var orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> 保存しています…';
+  call(action,payload).then(function(r){
+    if(r&&r.state) applyState(r.state);
+    S.scanDone=done(r); render(); window.scrollTo(0,0);
+  }).catch(function(err){
+    btn.disabled=false; btn.innerHTML=orig;
+    var box=$("scanErr"); if(!box) return;
+    box.hidden=false;
+    box.innerHTML = err.userMessage
+      ? '<div class="notice bad" role="alert"><b>この操作はできませんでした。</b><span>'+esc(err.userMessage)+'</span></div>'
+      : '<div class="notice bad" role="alert"><b>保存できませんでした。登録は完了していません。</b><span>通信状態を確認して、もう一度ボタンを押してください。続けて失敗する場合は総務部へ連絡してください。（'+esc(err.code)+'）</span></div>';
+    refresh();
+  });
+}
+
+/* ----- 自分の貸出 ----- */
+function viewMine(){
+  var e=curEmp();
+  if(!e) return '<div class="notice warn"><b>自分の名前を選ぶと、借りている本が表示されます。</b></div><button class="btn big primary" data-act="pickEmp" type="button">名前を選ぶ</button>';
+  var act=activeOfEmp(e.id), t=S.today;
+  var past=loanArr().filter(function(l){ return l.empId===e.id && l.status==="returned"; }).sort(function(a,b){ return a.returnDate<b.returnDate?1:-1; });
+  var cards=act.length?act.map(function(l){
+    var over=t>l.dueDate, left=diffDays(t,l.dueDate), b=S.books[l.bookId]||{};
+    var lt=over?'<span class="left bad">期限を '+(-left)+' 日過ぎています</span>':left===0?'<span class="left busy">今日が返却期限です</span>':'<span class="left '+(left<=3?"busy":"ok")+'">あと '+left+' 日</span>';
+    var extNote=l.extensions>=MAX_EXT?"延長済み（延長は1回まで）":over?"期限超過のため延長できません":"あと1回延長できます（元の期限＋14日）";
+    return '<article class="loan'+(over?" over":"")+'">'+(over?'<div class="notice bad"><b>返却期限を過ぎています。すぐに指定の書棚へ戻し、返却登録をしてください。</b></div>':"")+
+      '<div class="copy-head"><span class="spine">'+esc(l.bookId)+'</span><b>'+esc(bookTitle(l.bookId))+'</b></div>'+
+      '<div class="due"><span class="muted small">返却期限</span><span class="d">'+jp(l.dueDate)+'</span>'+lt+'</div>'+
+      '<p class="small muted">貸出番号 <span class="mono">'+esc(l.loanNo)+'</span>　貸出日 '+js(l.loanDate)+'<br>返却先：'+esc(b.location||"—")+'<br>'+extNote+'</p>'+
+      '<div class="btn-row"><button class="btn primary" data-act="return" data-id="'+esc(l.loanNo)+'" type="button">返却する</button><button class="btn" data-act="extend" data-id="'+esc(l.loanNo)+'" type="button"'+((l.extensions>=MAX_EXT||over)?" disabled":"")+'>延長する</button></div></article>';
+  }).join(""):'<div class="empty">いま借りている本はありません。</div>';
+  return '<section class="panel"><h2>'+esc(e.name)+' さんの貸出</h2><p>いま <b>'+act.length+' 冊</b> 借りています（上限 '+MAX_LOANS+' 冊）。'+(act.length<MAX_LOANS?'あと '+(MAX_LOANS-act.length)+' 冊借りられます。':'上限に達しています。')+'</p></section>'+
+    (act.length?qrButton("返す本のQRコードを読み取っても返却できます"):"")+'<div class="list">'+cards+'</div>'+
+    (past.length?'<details class="panel"><summary style="cursor:pointer;font-weight:700">これまでに返却した本（'+past.length+'件）</summary><div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>管理番号</th><th>書名</th><th>貸出日</th><th>返却日</th></tr></thead><tbody>'+past.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td class="mono">'+esc(l.bookId)+'</td><td class="wrap">'+esc(bookTitle(l.bookId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.returnDate)+'</td></tr>'; }).join("")+'</tbody></table></div></details>':"");
+}
+
+/* ----- ルール ----- */
+function viewRules(){
+  return '<section class="panel"><h2>本の借り方</h2><ol class="steps">'+
+  '<li><div>画面上部の<b>「名前を選ぶ」</b>で自分の名前を選びます。<br><span class="small muted">名前の選択は本人確認ではありません。必ず自分の名前を選んでください。</span></div></li>'+
+  '<li><div>借りたい本の<b>ラベルのQRコード</b>をスマートフォンで読み取ります（カメラアプリ、またはこの画面の「QRコードで借りる・返す」）。<br><span class="small muted">QRが使えないときは「本をさがす」で、手に取った本と同じ管理番号を選びます。</span></div></li>'+
+  '<li><div>確認画面で<b>自分の名前・管理番号・書名</b>を確かめて<b>「確定する」</b>を押します。</div></li>'+
+  '<li><div>「登録しました」と表示されたら持ち出します。表示されないときは登録されていません。</div></li></ol></section>'+
+  '<section class="panel"><h2>本の返し方</h2><ol class="steps">'+
+  '<li><div>本を<b>指定の書棚（保管場所）</b>へ戻します。</div></li>'+
+  '<li><div>本のQRコードを読み取るか、<b>「自分の貸出」</b>で<b>「返却する」</b>を押します。</div></li>'+
+  '<li><div>「書棚へ戻しました」にチェックを入れ、<b>「確定する」</b>を押します。</div></li></ol></section>'+
+  '<section class="panel"><h2>延長のしかた</h2><ol class="steps"><li><div><b>「自分の貸出」</b>で<b>「延長する」</b>を押し、新しい期限を確認して確定します。延長は1回まで、元の返却期限から14日間です。期限を過ぎると延長できません。</div></li></ol></section>'+
+  '<div class="grid2"><section class="panel"><h3>貸出ルール</h3><ul class="rules"><li>貸出は<b>1人2冊まで</b></li><li>貸出期間は<b>14日間</b></li><li>延長は<b>1回まで</b>（元の返却期限＋14日）</li><li>貸出中・利用停止中の本は借りられません</li><li>利用できるのは本社の従業員のみです</li></ul></section>'+
+  '<section class="panel"><h3>困ったとき（総務部へ連絡）</h3><ul class="rules"><li>期限を過ぎた → すぐに返却して返却登録</li><li>なくした・汚した・破いた → <b>総務部へ報告</b></li><li>間違えて登録した → <b>総務部へ連絡</b>（自分では取り消せません）</li><li>QRが読み取れない・ラベルがはがれた → 総務部へ連絡</li><li>「保存できませんでした」→ もう一度操作。続く場合は総務部へ</li></ul></section></div>'+
+  '<div class="notice info"><b>総務部の管理画面について</b><span>「総務部」タブは管理者パスワードで保護されています。名前の選択とは別の認証です。棚卸しは3か月に1回、総務部が行います。</span></div>';
+}
+
+/* ----- 総務部：ログイン ----- */
+function viewLogin(){
+  return '<section class="panel" style="max-width:480px"><h2>総務部 管理者ログイン</h2>'+
+  '<p class="small muted">この画面は総務部専用です。従業員の名前選択とは別の、管理者パスワードで保護されています。</p>'+
+  '<form id="loginForm" class="panel" style="padding:0;border:0;gap:12px"><div class="field"><label for="pw">管理者パスワード</label><input type="password" id="pw" autocomplete="current-password"></div>'+
+  '<p class="err" id="loginErr" hidden></p><button class="btn primary" id="loginBtn" type="submit">ログイン</button></form></section>';
+}
+
+/* ----- 総務部：管理画面 ----- */
+function viewAdmin(){
+  var books=bookArr(), act=loanArr().filter(function(l){ return l.status==="active"; }), over=act.filter(isOver);
+  var avail=books.filter(function(b){ return copyStatus(b).key==="ok"; }).length;
+  var sub=[["scan","QR読み取り"],["overdue","期限超過 ("+over.length+")"],["history","貸出履歴"],["books","書籍台帳"],["emps","従業員"],["labels","QRラベル"],["inv","棚卸し"],["settings","設定"]];
+  var body={scan:aScan,overdue:aOverdue,history:aHistory,books:aBooks,emps:aEmps,labels:aLabels,inv:aInv,settings:aSettings}[S.adminTab]||aScan;
+  return '<div class="admin-flag"><span><b>総務部 管理画面</b>（ログイン中）</span><button class="btn sm" data-act="logout" type="button">ログアウト</button></div>'+
+  '<button type="button" class="qr-btn" data-act="scanAdmin">'+QR_ICON+'<div><b>QRコードを読み取る</b><span>本の状況・借りている人の確認、返却処理、利用停止</span></div></button>'+
+  '<div class="tiles"><div class="tile"><div class="n">'+books.length+'</div><div class="l">所蔵（冊）</div></div><div class="tile"><div class="n">'+avail+'</div><div class="l">貸出可能</div></div><div class="tile"><div class="n">'+act.length+'</div><div class="l">貸出中</div></div><div class="tile'+(over.length?" alert":"")+'"><div class="n">'+over.length+'</div><div class="l">期限超過</div></div></div>'+
+  '<div class="subtabs" role="group" aria-label="管理メニュー">'+sub.map(function(s){ return '<button type="button" data-admintab="'+s[0]+'" aria-pressed="'+(S.adminTab===s[0])+'">'+s[1]+'</button>'; }).join("")+'</div>'+body(over);
+}
+function aScan(){
+  var hint='<p class="small muted">このスマホで総務部にログインしている間は、スマホの<b>普通のカメラ</b>で本のQRラベルを読み取っても、この画面が開きます。棚卸しの実施中は、読み取った本が自動で棚卸しに記録されます。</p>';
+  var note=S.scanNote?'<div class="scan-result '+S.scanNote.kind+'" role="status">'+esc(S.scanNote.text)+'</div>':"";
+  var html=note;
+  var b=S.scanCopy&&S.books[S.scanCopy];
+  if(!b) return note+'<div class="empty">上の「QRコードを読み取る」で本のラベルを読み取ると、ここに本の状況が表示されます。</div>'+hint;
+  var st=copyStatus(b), e=st.loan?S.emps[st.loan.empId]:null;
+  var hist=loanArr().filter(function(l){ return l.bookId===b.id; }).sort(function(x,y){ return x.loanNo<y.loanNo?1:-1; }).slice(0,5);
+  return html+'<section class="panel"><div class="copy-head"><span class="spine">'+esc(b.id)+'</span><span class="pill '+st.cls+'">'+st.label+'</span>'+chip(b)+'</div><h2>'+esc(b.title)+'</h2>'+
+    '<dl class="kv"><dt>著者／分類</dt><dd>'+esc(b.author)+'／'+esc(b.category)+'</dd><dt>保管場所</dt><dd>'+esc(b.location)+'</dd>'+
+    (st.loan?'<dt>借りている人</dt><dd><b>'+esc(e?e.name:st.loan.empId)+'</b>（'+esc(e?e.dept:"")+'・'+esc(st.loan.empId)+'）</dd><dt>貸出日／返却期限</dt><dd>'+js(st.loan.loanDate)+' ／ '+js(st.loan.dueDate)+(isOver(st.loan)?' <span class="pill st-bad">'+diffDays(st.loan.dueDate,S.today)+'日超過</span>':"")+'</dd><dt>延長</dt><dd>'+st.loan.extensions+' 回</dd>':"")+
+    (b.suspended?'<dt>停止理由</dt><dd>'+esc(b.suspendReason||"—")+'</dd>':"")+'</dl>'+
+    '<div class="btn-row">'+(st.loan?'<button class="btn primary" data-act="adminReturn" data-id="'+esc(st.loan.loanNo)+'" type="button">返却処理</button><button class="btn" data-act="adminCancel" data-id="'+esc(st.loan.loanNo)+'" type="button">貸出を取消</button>':"")+
+    '<button class="btn" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button><button class="btn" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button><button class="btn" data-act="asUser" data-id="'+esc(b.id)+'" type="button">利用者として借りる・返す</button></div>'+
+    (hist.length?'<h3>この本の最近の貸出</h3><div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>氏名</th><th>貸出日</th><th>返却日</th><th>状態</th></tr></thead><tbody>'+hist.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td>'+esc(empName(l.empId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.returnDate)+'</td><td>'+statusPill(l)+'</td></tr>'; }).join("")+'</tbody></table></div>':"")+'</section>'+hint;
+}
+function statusPill(l){ return l.status==="returned"?'<span class="pill st-ok">返却済み</span>':l.status==="cancelled"?'<span class="pill st-off">取消</span>':isOver(l)?'<span class="pill st-bad">期限超過</span>':'<span class="pill st-busy">貸出中</span>'; }
+function aOverdue(over){
+  if(!over.length) return '<div class="empty">期限超過の貸出はありません。</div>';
+  return '<section class="panel"><h2>期限超過一覧</h2><p class="small muted">本人へ返却を依頼してください（運用マニュアル6章）。</p><div class="tbl-wrap"><table><thead><tr><th>超過</th><th>管理番号</th><th>書名</th><th>借りている人</th><th>所属</th><th>返却期限</th><th>延長</th><th></th></tr></thead><tbody>'+
+  over.sort(function(a,b){ return a.dueDate<b.dueDate?-1:1; }).map(function(l){ var e=S.emps[l.empId]||{};
+    return '<tr><td><span class="pill st-bad">'+diffDays(l.dueDate,S.today)+'日</span></td><td class="mono">'+esc(l.bookId)+'</td><td class="wrap">'+esc(bookTitle(l.bookId))+'</td><td>'+esc(e.name||l.empId)+'</td><td>'+esc(e.dept||"")+'</td><td>'+js(l.dueDate)+'</td><td>'+l.extensions+'回</td><td><button class="btn sm" data-act="adminReturn" data-id="'+esc(l.loanNo)+'" type="button">返却処理</button></td></tr>'; }).join("")+'</tbody></table></div></section>';
+}
+function aHistory(){
+  var q=S.histQ.trim().toLowerCase();
+  var rows=loanArr().filter(function(l){
+    var st=l.status==="active"?(isOver(l)?"over":"active"):l.status;
+    if(S.histStatus!=="all" && S.histStatus!==st && !(S.histStatus==="active"&&st==="over")) return false;
+    if(q && (l.loanNo+" "+l.bookId+" "+l.empId+" "+bookTitle(l.bookId)+" "+empName(l.empId)).toLowerCase().indexOf(q)<0) return false;
+    return true; }).sort(function(a,b){ return a.loanNo<b.loanNo?1:-1; });
+  return '<section class="panel"><h2>貸出履歴</h2><p class="small muted">返却後も削除されずに残ります。スプレッドシートの「貸出履歴」シートでも確認・出力できます。</p>'+
+  '<div class="field"><label for="hq">貸出番号・管理番号・書名・氏名で検索</label><input type="search" id="hq" value="'+esc(S.histQ)+'"></div>'+
+  '<div class="seg" role="group">'+[["all","すべて"],["active","貸出中"],["over","期限超過"],["returned","返却済み"],["cancelled","取消"]].map(function(s){ return '<button type="button" data-hist="'+s[0]+'" aria-pressed="'+(S.histStatus===s[0])+'">'+s[1]+'</button>'; }).join("")+'</div>'+
+  (rows.length?'<div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>書籍管理番号</th><th>書名</th><th>従業員番号</th><th>氏名</th><th>貸出日</th><th>返却期限</th><th>返却日</th><th>延長回数</th><th>状態</th><th>メモ・操作</th></tr></thead><tbody>'+
+  rows.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td class="mono">'+esc(l.bookId)+'</td><td class="wrap">'+esc(bookTitle(l.bookId))+'</td><td class="mono">'+esc(l.empId)+'</td><td>'+esc(empName(l.empId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.dueDate)+'</td><td>'+js(l.returnDate)+'</td><td class="mono">'+l.extensions+'</td><td>'+statusPill(l)+'</td><td>'+
+    (l.status==="active"?'<div class="btn-row nowrap"><button class="btn sm" data-act="adminReturn" data-id="'+esc(l.loanNo)+'" type="button">返却処理</button><button class="btn sm" data-act="adminCancel" data-id="'+esc(l.loanNo)+'" type="button">取消</button></div>':'<span class="small muted">'+esc(l.note||"")+'</span>')+'</td></tr>'; }).join("")+
+  '</tbody></table></div>':'<div class="empty">該当する履歴はありません。</div>')+'</section>';
+}
+function aBooks(){
+  var gs=groups();
+  return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>書籍台帳（'+gs.length+'タイトル・'+bookArr().length+'冊）</h2><button class="btn sm primary" data-act="bookNew" type="button">＋ 新しい書籍を登録</button></div>'+
+  '<p class="small muted">同じ本が複数あるときは「＋1冊追加」で複本を登録します。管理番号は「書籍コード-冊番号」（例：BK-005-2）で、1冊ごとにQRラベルを貼ります。'+(bookArr().length>=30?'<br><b style="color:var(--busy)">所蔵が30冊に達しました（当初想定は30冊未満）。</b>':"")+'</p>'+
+  '<div class="tbl-wrap"><table><thead><tr><th>管理番号</th><th>保管場所</th><th>登録日</th><th>状況</th><th></th></tr></thead><tbody>'+
+  gs.map(function(g){ return '<tr class="grp"><td colspan="4" class="wrap"><span class="mono">'+esc(g.id)+'</span>　'+esc(g.title)+chip(g)+'<br><span class="small muted" style="font-weight:400">'+esc(g.author)+'／'+esc(g.category)+'</span></td><td><button class="btn sm" data-act="addCopy" data-id="'+esc(g.copies[0].id)+'" type="button">＋1冊追加</button></td></tr>'+
+    g.copies.map(function(b){ var st=copyStatus(b); return '<tr><td><span class="spine">'+esc(b.id)+'</span></td><td>'+esc(b.location)+'</td><td>'+js(b.registeredDate)+'</td><td><span class="pill '+st.cls+'">'+st.label+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button><button class="btn sm" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button></div></td></tr>'; }).join(""); }).join("")+
+  '</tbody></table></div></section>';
+}
+function aEmps(){
+  return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>従業員一覧（'+empArr().length+'名）</h2><button class="btn sm primary" data-act="empNew" type="button">＋ 従業員を登録</button></div>'+
+  '<p class="small muted">「停止」にした従業員は名前の選択肢に表示されず、貸出できません。退職者は削除せず停止にしてください。</p>'+
+  '<div class="tbl-wrap"><table><thead><tr><th>従業員番号</th><th>氏名</th><th>所属</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
+  empArr().map(function(e){ return '<tr><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td>'+esc(e.dept)+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
+  '</tbody></table></div></section>';
+}
+function aLabels(){
+  var bs=bookArr(), n=bs.filter(function(b){ return S.labelSel[b.id]; }).length;
+  return '<section class="panel"><h2>QRラベルの作成</h2><p class="small muted">印刷するラベルを選んで「ラベルを表示」を押し、PCから印刷するのがおすすめです（A4に約12枚。切り取って本の背または表紙に貼り、透明フィルムで保護）。QRコードには、このアプリのURLと管理番号が入っています。スマホの普通のカメラで読み取ると、その本の画面が開きます。</p>'+
+  (true?"":'<div class="notice warn"><b>アプリのURLが取得できないため、QRには管理番号のみが入ります。</b><span>公開（デプロイ）したURLで開いてから作成してください。</span></div>')+
+  '<div class="btn-row"><button class="btn sm" data-act="labelAll" type="button">すべて選択</button><button class="btn sm" data-act="labelNone" type="button">選択を解除</button><button class="btn sm primary" data-act="labelShow" type="button"'+(n?"":" disabled")+'>ラベルを表示（'+n+'枚）</button></div>'+
+  '<div class="tbl-wrap"><table><thead><tr><th></th><th>管理番号</th><th>書名</th></tr></thead><tbody>'+bs.map(function(b){ return '<tr><td><input type="checkbox" id="ls_'+esc(b.id)+'" data-label="'+esc(b.id)+'"'+(S.labelSel[b.id]?" checked":"")+' style="width:22px;height:22px"></td><td><label for="ls_'+esc(b.id)+'" class="spine">'+esc(b.id)+'</label></td><td class="wrap">'+esc(b.title)+'</td></tr>'; }).join("")+'</tbody></table></div></section>';
+}
+function aInv(){
+  var inv=S.inv;
+  if(!inv) { loadInv(); return '<div class="empty"><span class="spin"></span>　棚卸しの状況を読み込んでいます…</div>'; }
+  var bs=bookArr(), hist=inv.history||[];
+  var histHtml = hist.length?'<section class="panel"><h3>これまでの棚卸し</h3><div class="tbl-wrap"><table><thead><tr><th>棚卸ID</th><th>完了日時</th><th>確認</th><th>未確認の管理番号</th></tr></thead><tbody>'+hist.map(function(h){ return '<tr><td class="mono">'+esc(h.invId)+'</td><td>'+esc(h.finishedAt)+'</td><td>'+esc(h.checked)+'/'+esc(h.total)+'</td><td class="wrap mono">'+esc(h.missing||"なし")+'</td></tr>'; }).join("")+'</tbody></table></div></section>':"";
+  if(!inv.open) return '<section class="panel"><h2>棚卸し（3か月に1回）</h2><ol class="steps"><li><div>「棚卸しを開始」を押します。</div></li><li><div>書棚の本と、貸出中の本（借りている人に持ってきてもらう）のQRコードを1冊ずつ読み取ります。</div></li><li><div>残った「未確認」の本を調べ、「棚卸しを完了」を押します。結果はスプレッドシートの「棚卸履歴」に保存されます。</div></li></ol><button class="btn big primary" data-act="invStart" type="button">棚卸しを開始</button></section>'+histHtml;
+  var done=inv.checked.length, total=bs.length, pct=total?Math.round(done/total*100):0;
+  var missing=bs.filter(function(b){ return inv.checked.indexOf(b.id)<0; });
+  return '<section class="panel"><h2>棚卸し実施中 <span class="mono small muted">'+esc(inv.open.invId)+'</span></h2>'+
+  '<p><b class="mono" style="font-size:1.5rem">'+done+'</b> / '+total+' 冊を確認済み</p><div class="progress" aria-hidden="true"><i style="width:'+pct+'%"></i></div>'+
+  '<button type="button" class="qr-btn" data-act="invScan">'+QR_ICON+'<div><b>QRコードを続けて読み取る</b><span>読み取るたびに自動で記録されます</span></div></button>'+
+  '<h3>未確認の本（'+missing.length+'冊）</h3>'+(missing.length?'<div class="tbl-wrap"><table><thead><tr><th>管理番号</th><th>書名</th><th>保管場所</th><th>アプリ上の状況</th></tr></thead><tbody>'+missing.map(function(b){ var st=copyStatus(b); return '<tr><td><span class="spine">'+esc(b.id)+'</span></td><td class="wrap">'+esc(b.title)+'</td><td>'+esc(b.location)+'</td><td><span class="pill '+st.cls+'">'+st.label+'</span>'+(st.loan?' <span class="small">'+esc(empName(st.loan.empId))+'</span>':"")+'</td></tr>'; }).join("")+'</tbody></table></div>':'<div class="notice info"><b>すべての本を確認しました。</b></div>')+
+  '<button class="btn primary" data-act="invFinish" type="button">棚卸しを完了</button></section>'+histHtml;
+}
+function aSettings(){
+  var nSample=bookArr().filter(function(b){return b.sample;}).length+empArr().filter(function(e){return e.sample;}).length+loanArr().filter(function(l){return l.sample;}).length;
+  return '<section class="panel"><h2>アプリのURL</h2><dl class="kv"><dt>従業員用</dt><dd class="mono" style="word-break:break-all">'+esc(PAGE_URL)+'</dd><dt>総務部用</dt><dd class="mono" style="word-break:break-all">'+esc(ADMIN_URL)+'</dd></dl><p class="small muted">従業員には「従業員用」のURLを社内チャット等で案内してください。QRラベルにも従業員用のURLが入ります。どちらもアプリ内でカメラが使えます。</p></section>'+
+  '<section class="panel"><h2>管理者パスワードの変更</h2><div class="form-grid"><div class="field"><label for="pwCur">現在のパスワード</label><input type="password" id="pwCur" autocomplete="current-password"></div><div class="field"><label for="pwNew">新しいパスワード（8文字以上）</label><input type="password" id="pwNew" autocomplete="new-password"></div></div><div id="saveErr" hidden></div><button class="btn" data-act="pwChange" type="button" id="pwBtn">パスワードを変更</button></section>'+
+  '<section class="panel"><h2>サンプルデータ</h2>'+(nSample?'<div class="notice warn"><b>サンプルデータが '+nSample+' 件あります。</b><span>本番運用の前に削除してください。元に戻せません。</span></div><button class="btn danger" data-act="purge" type="button">サンプルデータを削除する</button>':'<div class="notice info"><b>サンプルデータはありません。</b></div>')+'</section>';
+}
+function loadInv(){ if(loadInv.busy) return; loadInv.busy=true; call("invState",{token:S.token}).then(function(r){ S.inv=r; applyState(r.state); loadInv.busy=false; if(!modalOpen) render(); }).catch(function(e){ loadInv.busy=false; handleAdminErr(e); }); }
+function handleAdminErr(e){ if(e.code==="auth"){ S.token=null; try{ localStorage.removeItem(LS_TOKEN); }catch(x){} render(); toast("ログインの有効期限が切れました。もう一度ログインしてください。",true); } else toast(e.userMessage||"読み込めませんでした（"+e.code+"）",true); }
+
+/* ---------- QR scanner ---------- */
+var scan=null;
+function openScanner(opts){
+  openModal('<h2>'+esc(opts.title)+'</h2><p class="small muted">'+esc(opts.help)+'</p>'+
+    '<div class="scan-live" id="scanLive" hidden><video id="scanVideo" playsinline muted></video><div class="frame"></div></div>'+
+    '<div id="scanMsg" class="notice plain" hidden></div><div id="scanResult" aria-live="polite"></div>'+
+    '<div class="btn-row"><span class="btn photo-btn" id="photoBtn">写真を撮って読み取る<input type="file" id="scanFile" accept="image/*" capture="environment" aria-label="写真を撮って読み取る"></span></div>'+
+    '<details><summary class="small" style="cursor:pointer">QRが読めないときは管理番号を入力</summary><div class="btn-row" style="margin-top:8px"><input type="text" id="scanManual" placeholder="例：BK-005-2" style="flex:1;min-width:150px"><button class="btn" id="scanManualBtn" type="button">決定</button></div></details>'+
+    '<div class="btn-row"><button class="btn" data-close type="button">'+(opts.continuous?"読み取りを終える":"閉じる")+'</button></div>',
+  function(){
+    scan={opts:opts, stream:null, raf:0, last:"", lastAt:0, busy:false, canvas:document.createElement("canvas")};
+    modalCleanup=stopScanner;
+    $("scanFile").addEventListener("change",function(){ if(this.files&&this.files[0]) decodeFile(this.files[0]); this.value=""; });
+    $("scanManualBtn").addEventListener("click",function(){ var v=$("scanManual").value; var id=parseCode(v); if(id){ $("scanManual").value=""; gotCode(id);} else scanMsg("管理番号の形式が違います（例：BK-005-2）","ng"); });
+    startLive();
+  });
+}
+function scanMsg(t, kind){ var r=$("scanResult"); if(r) r.innerHTML='<div class="scan-result '+(kind||"ok")+'">'+esc(t)+'</div>'; }
+function startLive(){
+  if(typeof jsQR!=="function"){ $("scanMsg").hidden=false; $("scanMsg").innerHTML="<b>読み取り機能を読み込めませんでした。</b><span>通信状態を確認するか、管理番号を入力してください。</span>"; return; }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ liveUnavailable(); return; }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false}).then(function(stream){
+    if(!scan){ stream.getTracks().forEach(function(t){t.stop();}); return; }
+    scan.stream=stream; var v=$("scanVideo"); v.srcObject=stream; v.play().catch(function(){});
+    $("scanLive").hidden=false; $("photoBtn").classList.remove("primary"); tick();
+  }).catch(liveUnavailable);
+}
+function liveUnavailable(){
+  var m=$("scanMsg"); if(!m) return; m.hidden=false;
+  m.innerHTML="<b>この画面ではカメラを直接起動できません（Googleの制限）。</b><span>下の「写真を撮って読み取る」を押してQRコードを撮影するか、スマホの普通のカメラでQRラベルを読み取ってください。</span>";
+  $("photoBtn").classList.add("primary");
+}
+function tick(){
+  if(!scan||!scan.stream) return;
+  var v=$("scanVideo");
+  if(v && v.readyState>=2 && !scan.busy){
+    var w=Math.min(720,v.videoWidth), h=Math.round(v.videoHeight*w/v.videoWidth), c=scan.canvas; c.width=w; c.height=h;
+    var ctx=c.getContext("2d",{willReadFrequently:true}); ctx.drawImage(v,0,0,w,h);
+    var r=jsQR(ctx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"dontInvert"});
+    if(r&&r.data) handleRaw(r.data);
+  }
+  scan.raf=requestAnimationFrame(tick);
+}
+function decodeFile(file){
+  scanMsg("読み取っています…","warn");
+  var url=URL.createObjectURL(file), img=new Image();
+  img.onload=function(){
+    var found=null;
+    [1600,1000,640].some(function(max){
+      var s=Math.min(1,max/Math.max(img.width,img.height)), w=Math.round(img.width*s), h=Math.round(img.height*s), c=document.createElement("canvas"); c.width=w; c.height=h;
+      var ctx=c.getContext("2d"); ctx.drawImage(img,0,0,w,h);
+      var r=jsQR(ctx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:"attemptBoth"}); if(r&&r.data) found=r.data; return !!found; });
+    URL.revokeObjectURL(url);
+    if(found) handleRaw(found, true); else scanMsg("QRコードが見つかりませんでした。QRコードを大きく、明るい場所で撮影してください。","ng");
+  };
+  img.onerror=function(){ scanMsg("画像を読み込めませんでした。もう一度撮影してください。","ng"); };
+  img.src=url;
+}
+function handleRaw(text, fromPhoto){
+  var id=parseCode(text), now=Date.now();
+  if(!id){ if(now-scan.lastAt>2000||fromPhoto){ scanMsg("このQRコードは書籍ラベルではありません。","ng"); scan.lastAt=now; } return; }
+  if(id===scan.last && now-scan.lastAt<3000 && !fromPhoto) return;
+  scan.last=id; scan.lastAt=now; gotCode(id);
+}
+function gotCode(id){
+  if(navigator.vibrate) try{ navigator.vibrate(60); }catch(e){}
+  var o=scan.opts;
+  if(!o.continuous){ stopScanner(); modalCleanup=null; o.onCode(id); return; }
+  scan.busy=true; o.onCode(id).then(function(){ scan&&(scan.busy=false); }, function(){ scan&&(scan.busy=false); });
+}
+function stopScanner(){ if(!scan) return; cancelAnimationFrame(scan.raf); if(scan.stream) scan.stream.getTracks().forEach(function(t){ t.stop(); }); scan=null; }
+
+/* A QR label was read (phone camera link or in-app scanner): open the one-screen borrow/return page for that copy. */
+function userScanned(id){
+  closeModal();
+  S.copyId=id; S.view="scan"; S.scanDone=null;
+  render(); window.scrollTo(0,0);
+}
+function adminScanned(id){ closeModal(); S.scanCopy=id; S.scanNote=null; S.adminTab="scan"; if(!S.books[id]) toast("管理番号「"+id+"」は台帳にありません",true); render(); }
+function invScanned(id){
+  return call("invScan",{token:S.token, bookId:id}).then(function(r){
+    S.inv=r; applyState(r.state);
+    var s=r.scan, total=bookArr().length;
+    if(s.dup) scanMsg(s.bookId+" は確認済みです（"+r.checked.length+"/"+total+"）","warn");
+    else if(s.status==="貸出中") scanMsg(s.bookId+" を確認しました。※アプリでは貸出中です（"+r.checked.length+"/"+total+"）。書棚にあった場合は返却登録忘れの可能性があります。","warn");
+    else scanMsg(s.bookId+" を確認しました（"+r.checked.length+"/"+total+"）","ok");
+  }).catch(function(e){ if(e.code==="auth"){ closeModal(); handleAdminErr(e); } else scanMsg(e.userMessage||"記録できませんでした。もう一度読み取ってください。","ng"); throw e; });
+}
+
+/* ---------- dialogs ---------- */
+function pickEmpModal(){
+  var emps=empArr().filter(function(e){ return e.active; });
+  openModal('<h2>自分の名前を選んでください</h2><div class="notice warn"><b>名前の選択は本人確認ではありません。</b><span>必ず自分の名前を選んでください。他の人の名前で操作しないでください。</span></div>'+
+    (emps.length?'<div class="emp-pick">'+emps.map(function(e){ return '<button type="button" data-pick="'+esc(e.id)+'" aria-pressed="'+(S.empId===e.id)+'"><span class="n">'+esc(e.name)+chip(e)+'</span><span class="d">'+esc(e.dept)+'　従業員番号 '+esc(e.id)+'</span></button>'; }).join("")+'</div>':'<div class="empty">利用できる従業員が登録されていません。総務部へ連絡してください。</div>')+
+    '<p class="small muted">選んだ名前はこの端末に記憶されます。共用の端末では使い終わったら選び直してください。</p><div class="btn-row"><button class="btn" data-close type="button">閉じる</button></div>',
+  function(){ $("modalRoot").querySelectorAll("[data-pick]").forEach(function(b){ b.addEventListener("click",function(){
+    S.empId=b.getAttribute("data-pick"); try{ localStorage.setItem(LS_EMP,S.empId); }catch(e){}
+    closeModal(); toast(empName(S.empId)+" さんを選びました");
+    if(S.view==="title" && S.copyId){ var c=S.books[S.copyId]; if(c && copyStatus(c).key==="ok") borrowModal(c.id); }
+  }); }); });
+}
+function cbox(e, rows){ return '<dl class="confirm-box"><dt>利用者</dt><dd>'+esc(e.name)+'（'+esc(e.dept)+'・'+esc(e.id)+'）</dd>'+rows+'</dl>'; }
+function okRow(label){ return '<div id="saveErr" hidden></div><div class="btn-row"><button class="btn primary" id="mOk" type="button">'+(label||"確定する")+'</button><button class="btn" data-close type="button">やめる</button></div>'; }
+function borrowModal(id){
+  var e=curEmp(), b=S.books[id]; if(!e){ pickEmpModal(); return; }
+  var n=activeOfEmp(e.id).length, d=S.today;
+  openModal('<h2>この本を借りますか？</h2>'+cbox(e,'<dt>本</dt><dd><span class="spine">'+esc(b.id)+'</span> '+esc(b.title)+'</dd><dt>貸出日</dt><dd>'+jp(d)+'</dd><dt>返却期限</dt><dd>'+jp(addDays(d,LOAN_DAYS))+'</dd>')+
+    (n>=MAX_LOANS?'<div class="notice bad"><b>貸出上限（1人2冊）に達しています。</b><span>いま '+n+' 冊借りています。先に返却してください。</span></div>':'<p class="small">名前や管理番号が違う場合は「やめる」を押してください。</p>')+okRow(),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"borrow",{empId:e.id,bookId:b.id},function(r){ return "登録しました：「"+b.title+"」（"+b.id+"）。返却期限は "+js(r.loan.dueDate)+" です"; }); }); });
+}
+function returnModal(no, byAdmin){
+  var l=S.loans[no]; if(!l) return; var b=S.books[l.bookId]||{}, e=S.emps[l.empId]||{id:l.empId,name:l.empId,dept:""};
+  openModal('<h2>'+(byAdmin?"総務部で返却処理しますか？":"この本を返却しますか？")+'</h2>'+cbox(e,'<dt>本</dt><dd><span class="spine">'+esc(l.bookId)+'</span> '+esc(b.title||"")+'</dd><dt>貸出番号</dt><dd class="mono">'+esc(no)+'</dd><dt>返却日</dt><dd>'+jp(S.today)+'</dd><dt>戻す書棚</dt><dd>'+esc(b.location||"—")+'</dd>')+
+    '<label class="check" for="shelved"><input type="checkbox" id="shelved"><span><b>本を指定の書棚へ戻しました</b><br><span class="small muted">書棚へ戻してから返却登録をしてください。</span></span></label>'+okRow(),
+  function(){ $("mOk").disabled=true; $("shelved").addEventListener("change",function(){ $("mOk").disabled=!this.checked; });
+    $("mOk").addEventListener("click",function(){ runSave(this,"returnLoan",{loanNo:no, token:byAdmin?S.token:null},"返却を登録しました："+(b.title||l.bookId)); }); });
+}
+function extendModal(no){
+  var l=S.loans[no]; if(!l) return; var b=S.books[l.bookId]||{}, e=S.emps[l.empId], orig=l.originalDueDate||l.dueDate;
+  openModal('<h2>返却期限を延長しますか？</h2>'+cbox(e,'<dt>本</dt><dd><span class="spine">'+esc(l.bookId)+'</span> '+esc(b.title||"")+'</dd><dt>今の返却期限</dt><dd>'+jp(l.dueDate)+'</dd><dt>延長後の期限</dt><dd style="color:var(--accent)">'+jp(addDays(orig,EXT_DAYS))+'</dd>')+
+    '<p class="small">延長は1回だけです。延長後はもう延長できません。</p>'+okRow(),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"extend",{loanNo:no},function(r){ return "延長しました。新しい返却期限は "+js(r.dueDate)+" です"; }); }); });
+}
+function cancelModal(no){
+  var l=S.loans[no]; if(!l) return;
+  openModal('<h2>貸出登録を取り消しますか？</h2><dl class="confirm-box"><dt>貸出番号</dt><dd class="mono">'+esc(no)+'</dd><dt>本</dt><dd>'+esc(l.bookId)+' '+esc(bookTitle(l.bookId))+'</dd><dt>利用者</dt><dd>'+esc(empName(l.empId))+'</dd><dt>貸出日</dt><dd>'+jp(l.loanDate)+'</dd></dl>'+
+    '<p class="small">登録間違い（別の本・別の名前）や、紛失で貸出を終了するときに使います。記録は「取消」として残ります。本が返ってきた場合は「返却処理」を使ってください。</p>'+
+    '<div class="field"><label for="cReason">取消の理由（必須）</label><input type="text" id="cReason" placeholder="例：BK-005-3と誤登録／紛失のため貸出終了"></div>'+
+    '<div id="saveErr" hidden></div><div class="btn-row"><button class="btn danger" id="mOk" type="button" disabled>取り消す</button><button class="btn" data-close type="button">やめる</button></div>',
+  function(){ $("cReason").addEventListener("input",function(){ $("mOk").disabled=!this.value.trim(); });
+    $("mOk").addEventListener("click",function(){ runSave(this,"cancelLoan",{token:S.token,loanNo:no,reason:$("cReason").value.trim()},"貸出 "+no+" を取り消しました"); }); });
+}
+function bookForm(id){
+  var isNew=!id, b=id?S.books[id]:{title:"",author:"",category:"",location:"本社3F 総務部前 書棚A-1段",registeredDate:S.today};
+  var cats=Array.from(new Set(bookArr().map(function(x){return x.category;}))).sort();
+  var sameN=id?bookArr().filter(function(x){ return groupOf(x.id)===groupOf(id); }).length:0;
+  openModal('<h2>'+(isNew?"新しい書籍を登録":"書籍を編集（"+esc(id)+"）")+'</h2><div class="form-grid">'+
+    '<div class="field full"><label for="fTitle">書籍名</label><input type="text" id="fTitle" value="'+esc(b.title)+'"></div>'+
+    '<div class="field"><label for="fAuthor">著者</label><input type="text" id="fAuthor" value="'+esc(b.author)+'"></div>'+
+    '<div class="field"><label for="fCat">分類</label><input type="text" id="fCat" list="catList" value="'+esc(b.category)+'"><datalist id="catList">'+cats.map(function(c){ return '<option value="'+esc(c)+'">'; }).join("")+'</datalist></div>'+
+    '<div class="field full"><label for="fLoc">保管場所</label><input type="text" id="fLoc" value="'+esc(b.location)+'"></div>'+
+    '<div class="field"><label for="fDate">登録日</label><input type="date" id="fDate" value="'+esc(b.registeredDate)+'"></div>'+
+    (isNew?'<div class="field"><label for="fCopies">冊数（同じ本の数）</label><input type="number" id="fCopies" min="1" max="10" value="1"><span class="hint">冊数分の管理番号（-1, -2…）を作ります</span></div>':
+      (sameN>1?'<label class="check full" for="fGroup"><input type="checkbox" id="fGroup" checked><span>書籍名・著者・分類を同じ本の全 '+sameN+' 冊に反映する</span></label>':""))+
+    '</div><p class="err" id="fErr" hidden></p>'+okRow("保存する"),
+  function(){ $("mOk").addEventListener("click",function(){
+    var rec={id:id, title:$("fTitle").value.trim(), author:$("fAuthor").value.trim(), category:$("fCat").value.trim(), location:$("fLoc").value.trim(), registeredDate:$("fDate").value};
+    var err=!rec.title?"書籍名を入力してください":!rec.author?"著者を入力してください":!rec.category?"分類を入力してください":!rec.location?"保管場所を入力してください":"";
+    if(err){ $("fErr").textContent=err; $("fErr").hidden=false; return; } $("fErr").hidden=true;
+    if(isNew) runSave(this,"newTitle",{token:S.token,rec:rec,copies:Number($("fCopies").value)||1},function(r){ return "登録しました："+r.ids.join("、")+"。「QRラベル」でラベルを作成してください"; },function(r){ r.ids.forEach(function(x){ S.labelSel[x]=true; }); });
+    else runSave(this,"saveBook",{token:S.token,rec:rec,applyToGroup:!!($("fGroup")&&$("fGroup").checked)},"書籍を更新しました："+id);
+  }); });
+}
+function addCopyModal(id){
+  var b=S.books[id], g=groupOf(id), n=bookArr().filter(function(x){ return groupOf(x.id)===g; }).length;
+  openModal('<h2>同じ本を1冊追加しますか？</h2><dl class="confirm-box"><dt>書籍</dt><dd><span class="mono">'+esc(g)+'</span> '+esc(b.title)+'</dd><dt>現在</dt><dd>'+n+' 冊</dd><dt>追加後</dt><dd>'+(n+1)+' 冊（新しい管理番号を自動で付けます）</dd></dl>'+okRow("追加する"),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"addCopy",{token:S.token,bookId:id},function(r){ return "追加しました："+r.id+"。「QRラベル」でラベルを作成してください"; },function(r){ S.labelSel[r.id]=true; }); }); });
+}
+function bookToggle(id){
+  var b=S.books[id], to=!b.suspended;
+  openModal('<h2>'+(to?"利用停止にしますか？":"利用停止を解除しますか？")+'</h2><dl class="confirm-box"><dt>本</dt><dd><span class="spine">'+esc(id)+'</span> '+esc(b.title)+'</dd></dl>'+
+    (to?'<div class="field"><label for="tReason">理由</label><input type="text" id="tReason" placeholder="例：破損のため修理中／紛失／廃棄"></div>'+(activeOfBook(id)?'<div class="notice warn"><b>この本は貸出中です。</b><span>停止しても今の貸出は残ります。</span></div>':""):"")+okRow(),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"setBookSuspended",{token:S.token,bookId:id,suspended:to,reason:to?$("tReason").value.trim():""},(to?"利用停止にしました：":"利用停止を解除しました：")+id); }); });
+}
+function empForm(id){
+  var e=id?S.emps[id]:{id:"",name:"",dept:"",active:true};
+  openModal('<h2>'+(id?"従業員を編集":"従業員を登録")+'</h2><div class="form-grid">'+
+    '<div class="field"><label for="eId">従業員番号</label><input type="text" id="eId" value="'+esc(e.id)+'"'+(id?" readonly":"")+'></div>'+
+    '<div class="field"><label for="eName">氏名</label><input type="text" id="eName" value="'+esc(e.name)+'"></div>'+
+    '<div class="field full"><label for="eDept">所属</label><input type="text" id="eDept" value="'+esc(e.dept)+'"></div>'+
+    '<label class="check full" for="eActive"><input type="checkbox" id="eActive"'+(e.active?" checked":"")+'><span><b>利用可能</b>（外すと停止）</span></label></div>'+okRow("保存する"),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:$("eDept").value,active:$("eActive").checked}},"従業員を保存しました："+$("eName").value.trim()); }); });
+}
+function empToggle(id){
+  var e=S.emps[id], to=!e.active, n=activeOfEmp(id).length;
+  openModal('<h2>'+(to?"利用可能にしますか？":"利用を停止しますか？")+'</h2><dl class="confirm-box"><dt>従業員</dt><dd>'+esc(e.name)+'（'+esc(e.dept)+'・'+esc(id)+'）</dd></dl>'+
+    (!to&&n?'<div class="notice warn"><b>'+n+' 冊借りています。</b><span>停止しても貸出記録は残ります。返却は「返却処理」で行えます。</span></div>':"")+okRow(),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"setEmpActive",{token:S.token,empId:id,active:to},(to?"利用可能にしました：":"停止しました：")+e.name); }); });
+}
+function purgeModal(){
+  openModal('<h2>サンプルデータを削除しますか？</h2><div class="notice bad"><b>サンプルの書籍・従業員・貸出記録をすべて削除します。元に戻せません。</b><span>本番データ（サンプル印のないもの）は削除されません。</span></div>'+
+    '<label class="check" for="pOk"><input type="checkbox" id="pOk"><span>本番運用を始めるため、サンプルデータを削除します</span></label>'+
+    '<div id="saveErr" hidden></div><div class="btn-row"><button class="btn danger" id="mOk" type="button" disabled>削除する</button><button class="btn" data-close type="button">やめる</button></div>',
+  function(){ $("pOk").addEventListener("change",function(){ $("mOk").disabled=!this.checked; });
+    $("mOk").addEventListener("click",function(){ runSave(this,"purgeSample",{token:S.token},"サンプルデータを削除しました",function(){ if(S.empId&&!S.emps[S.empId]){ S.empId=null; try{ localStorage.removeItem(LS_EMP); }catch(e){} } }); }); });
+}
+function showLabels(){
+  var ids=bookArr().filter(function(b){ return S.labelSel[b.id]; }).map(function(b){ return b.id; });
+  var html='<div class="labels">'+ids.map(function(id){ var b=S.books[id], svg="";
+    try{ var q=qrcode(0,"M"); q.addData(qrUrl(id)); q.make(); svg=q.createSvgTag({cellSize:4,margin:0,scalable:true}); }catch(e){ svg="QRエラー"; }
+    return '<div class="label"><div class="q">'+svg+'</div><div><div class="id">'+esc(id)+'</div><div class="tt">'+esc(b.title)+'</div><div class="org">本社 総務部 貸出図書</div></div></div>'; }).join("")+'</div>';
+  $("printArea").innerHTML=html;
+  openModal('<h2>QRラベル（'+ids.length+'枚）</h2><p class="small muted">「印刷する」でA4に印刷できます（PC推奨）。スマホでは画面を長押しして画像として保存することもできます。</p><div style="max-height:55vh;overflow:auto">'+html+'</div>'+
+    '<div class="btn-row"><button class="btn primary" id="mPrint" type="button">印刷する</button><button class="btn" data-close type="button">閉じる</button></div>',
+  function(){ $("mPrint").addEventListener("click",function(){ window.print(); }); });
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click",function(ev){
+  var t=ev.target.closest("button,[data-close]"); if(!t) return;
+  if(t.hasAttribute("data-close")){ closeModal(); return; }
+  if(t.id==="whoBtn"){ if(S.loaded) pickEmpModal(); return; }
+  var a;
+  if((a=t.getAttribute("data-tab"))){ S.view=a; S.copyId=null; render(); window.scrollTo(0,0); return; }
+  if((a=t.getAttribute("data-go"))){ S.view=a; S.copyId=null; render(); window.scrollTo(0,0); return; }
+  if((a=t.getAttribute("data-group"))){ S.group=a; S.copyId=null; S.view="title"; render(); window.scrollTo(0,0); return; }
+  if((a=t.getAttribute("data-status"))){ S.status=a; render(); return; }
+  if((a=t.getAttribute("data-admintab"))){ S.adminTab=a; if(a==="inv") S.inv=null; render(); return; }
+  if((a=t.getAttribute("data-hist"))){ S.histStatus=a; render(); return; }
+  var act=t.getAttribute("data-act"), id=t.getAttribute("data-id"); if(!act) return;
+  ({
+    reload:function(){ location.reload(); },
+    pickEmp:pickEmpModal,
+    scanUser:function(){ openScanner({title:"本のQRコードを読み取る",help:"本のラベルのQRコードを枠の中に写してください。",onCode:userScanned}); },
+    scanAdmin:function(){ openScanner({title:"QRコードを読み取る",help:"本のラベルのQRコードを枠の中に写してください。",onCode:adminScanned}); },
+    invScan:function(){ openScanner({title:"棚卸し：続けて読み取る",help:"1冊ずつQRコードを写すと自動で記録されます。終わったら「読み取りを終える」。",continuous:true,onCode:invScanned}); },
+    borrow:function(){ borrowModal(id); }, "return":function(){ returnModal(id,false); }, extend:function(){ extendModal(id); },
+    asUser:function(){ userScanned(id); },
+    inlineBorrow:function(){ var e=curEmp(), b=S.books[id]; inlineSave(t,"borrow",{empId:e.id,bookId:id},function(r){ return {title:"借りました", text:"「"+b.title+"」（"+id+"）を "+e.name+" さんの名前で登録しました。返却期限は "+jp(r.loan.dueDate)+" です。"}; }); },
+    inlineReturn:function(){ var l=S.loans[id], b=S.books[l.bookId]||{}; inlineSave(t,"returnLoan",{loanNo:id},function(){ return {title:"返却しました", text:"「"+(b.title||l.bookId)+"」の返却を登録しました。"}; }); },
+    inlineExtend:function(){ var l=S.loans[id], b=S.books[l.bookId]||{}; inlineSave(t,"extend",{loanNo:id},function(r){ return {title:"延長しました", text:"「"+(b.title||l.bookId)+"」の新しい返却期限は "+jp(r.dueDate)+" です。延長は1回までです。"}; }); },
+    adminReturn:function(){ returnModal(id,true); }, adminCancel:function(){ cancelModal(id); },
+    bookNew:function(){ bookForm(null); }, bookEdit:function(){ bookForm(id); }, bookToggle:function(){ bookToggle(id); }, addCopy:function(){ addCopyModal(id); },
+    empNew:function(){ empForm(null); }, empEdit:function(){ empForm(id); }, empToggle:function(){ empToggle(id); },
+    labelAll:function(){ bookArr().forEach(function(b){ S.labelSel[b.id]=true; }); render(); },
+    labelNone:function(){ S.labelSel={}; render(); },
+    labelShow:showLabels,
+    invStart:function(){ t.disabled=true; call("invStart",{token:S.token}).then(function(r){ S.inv=r; applyState(r.state); render(); }).catch(function(e){ t.disabled=false; handleAdminErr(e); }); },
+    invFinish:function(){
+      var miss=S.inv?bookArr().length-S.inv.checked.length:0;
+      openModal('<h2>棚卸しを完了しますか？</h2><p>未確認の本が <b>'+miss+' 冊</b> あります。'+(miss?'完了すると、未確認の管理番号が「棚卸履歴」に記録されます。':'')+'</p>'+okRow("完了する"),
+        function(){ $("mOk").addEventListener("click",function(){ runSave(this,"invFinish",{token:S.token},"棚卸しを完了し、結果を保存しました",function(r){ S.inv=r; }); }); });
+    },
+    purge:purgeModal,
+    pwChange:function(){ runSave($("pwBtn"),"changePassword",{token:S.token,current:$("pwCur").value,next:$("pwNew").value},"管理者パスワードを変更しました"); },
+    logout:function(){ S.token=null; S.inv=null; try{ localStorage.removeItem(LS_TOKEN); }catch(e){} render(); toast("ログアウトしました"); }
+  }[act]||function(){})();
+});
+document.addEventListener("submit",function(ev){
+  if(ev.target.id!=="loginForm") return;
+  ev.preventDefault();
+  var btn=$("loginBtn"), pw=$("pw").value; btn.disabled=true; btn.innerHTML='<span class="spin"></span> 確認しています…';
+  call("login",{password:pw}).then(function(r){ S.token=r.token; try{ localStorage.setItem(LS_TOKEN,r.token); }catch(e){} render(); toast("ログインしました"); })
+    .catch(function(e){ btn.disabled=false; btn.textContent="ログイン"; var er=$("loginErr"); er.hidden=false; er.textContent=e.userMessage||"ログインできませんでした（"+e.code+"）。通信状態を確認してください。"; });
+});
+document.addEventListener("input",function(ev){
+  if(ev.target.id==="q"){ S.q=ev.target.value; render(); }
+  else if(ev.target.id==="hq"){ S.histQ=ev.target.value; render(); }
+});
+document.addEventListener("change",function(ev){
+  if(ev.target.id==="cat"){ S.cat=ev.target.value; render(); }
+  else if(ev.target.id==="scanEmp"){ S.empId=ev.target.value||null; try{ if(S.empId) localStorage.setItem(LS_EMP,S.empId); else localStorage.removeItem(LS_EMP); }catch(e){} render(); }
+  else if(ev.target.id==="scanShelved"){ var g=$("scanGo"); if(g) g.disabled=!ev.target.checked; }
+  else if(ev.target.hasAttribute&&ev.target.hasAttribute("data-label")){ var k=ev.target.getAttribute("data-label"); if(ev.target.checked) S.labelSel[k]=true; else delete S.labelSel[k]; render(); }
+});
+document.addEventListener("visibilitychange",function(){ if(document.visibilityState==="visible") refresh(); });
+setInterval(function(){ if(document.visibilityState==="visible" && !modalOpen) refresh(); }, 60000);
+
+/* ---------- boot ---------- */
+var initialCopy=null;
+function boot(){
+  call("state").then(function(st){
+    applyState(st);
+    var check = S.token
+      ? call("checkToken",{token:S.token}).then(function(){ return true; }, function(){ S.token=null; try{ localStorage.removeItem(LS_TOKEN); }catch(e){} return false; })
+      : Promise.resolve(false);
+    return check.then(function(isAdmin){
+      if(!initialCopy) render();
+      else if(isAdmin) adminFromLink(initialCopy);
+      else userScanned(initialCopy);
+    });
+  }).catch(function(e){ S.loadErr=e; render(); });
+}
+/* Opened from a QR label with the phone camera while logged in as admin: show the admin card, and record inventory if one is running. */
+function adminFromLink(id){
+  S.view="admin"; S.adminTab="scan"; S.scanCopy=id;
+  S.scanNote = S.books[id] ? null : {kind:"ng", text:"管理番号「"+id+"」の本は台帳にありません。"};
+  render();
+  if(!S.books[id]) return;
+  call("invState",{token:S.token}).then(function(r){
+    S.inv=r; applyState(r.state);
+    if(!r.open){ render(); return; }
+    return call("invScan",{token:S.token, bookId:id}).then(function(x){
+      S.inv=x; applyState(x.state);
+      var sc=x.scan, total=bookArr().length, n=x.checked.length;
+      S.scanNote = sc.dup ? {kind:"warn", text:"棚卸し：" + sc.bookId + " は確認済みです（" + n + "/" + total + "冊）"}
+        : sc.status==="貸出中" ? {kind:"warn", text:"棚卸し：" + sc.bookId + " を記録しました（" + n + "/" + total + "冊）。※アプリでは貸出中です。書棚にあった場合は返却処理をしてください。"}
+        : {kind:"ok", text:"棚卸し：" + sc.bookId + " を記録しました（" + n + "/" + total + "冊）"};
+      render();
+    });
+  }).catch(function(e){ S.scanNote={kind:"ng", text:"棚卸しに記録できませんでした。ページを開き直してください。（"+(e.userMessage||e.code)+"）"}; render(); });
+}
+if(IN_GAS){
+  try{
+    google.script.url.getLocation(function(loc){ var b=loc&&loc.parameter&&loc.parameter.b; initialCopy=b?parseCode(b):null; boot(); });
+  }catch(e){ boot(); }
+} else {
+  /* Pages outside Google (camera works). admin.html opens on the 総務部 tab; the top page is for employees. */
+  var qb=new URLSearchParams(location.search).get("b"); initialCopy=qb?parseCode(qb):null;
+  if(/admin\.html$/.test(location.pathname)){
+    if(!initialCopy) S.view="admin";
+    var bs=document.querySelector(".brand span"); if(bs) bs.textContent="本社 総務部（管理用）";
+    document.title="ビジネス書 貸出管理（総務部）";
+  }
+  boot();
+}
+})();
+</script>
+</body>
+</html>

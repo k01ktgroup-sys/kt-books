@@ -147,6 +147,7 @@ ul.rules{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
 .check{display:flex;gap:10px;align-items:flex-start;background:var(--surface-2);padding:12px;border-radius:8px;cursor:pointer}
 .check input{width:24px;height:24px;flex:none;margin-top:2px}
 .emp-pick{display:grid;gap:10px}
+.dept-pick{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 .emp-pick button{min-height:62px;text-align:left;padding:10px 16px;border-radius:var(--r);border:1px solid var(--line);background:var(--surface);cursor:pointer;display:flex;flex-direction:column}
 .emp-pick button[aria-pressed="true"]{border:2px solid var(--accent);background:var(--accent-soft)}
 .emp-pick .n{font-weight:700;font-size:1.08rem} .emp-pick .d{font-size:.86rem;color:var(--muted)}
@@ -278,6 +279,9 @@ function empArr(){ return Object.keys(S.emps).map(function(k){ return S.emps[k];
 function activeOfBook(id){ return loanArr().filter(function(l){ return l.status==="active" && l.bookId===id; })[0]||null; }
 function activeOfEmp(id){ return loanArr().filter(function(l){ return l.status==="active" && l.empId===id; }).sort(function(a,b){ return a.dueDate<b.dueDate?-1:1; }); }
 function isOver(l){ return l.status==="active" && S.today>l.dueDate; }
+function activeEmps(){ return empArr().filter(function(x){ return x.active; }); }
+function deptList(){ var seen={}, out=[]; activeEmps().forEach(function(x){ var d=x.dept||"（所属なし）"; if(!seen[d]){ seen[d]=1; out.push(d); } }); return out.sort(function(a,b){ return a.localeCompare(b,"ja"); }); }
+function empsInDept(d){ return activeEmps().filter(function(x){ return (x.dept||"（所属なし）")===d; }).sort(function(a,b){ return a.id<b.id?-1:a.id>b.id?1:0; }); }
 function curEmp(){ var e=S.empId&&S.emps[S.empId]; return e && e.active ? e : null; }
 function empName(id){ var e=S.emps[id]; return e?e.name:id; }
 function bookTitle(id){ var b=S.books[id]; return b?b.title:id; }
@@ -429,8 +433,12 @@ function viewScanned(){
   if(S.scanDone) return '<section class="panel done-panel"><div class="done-mark" aria-hidden="true">&#10003;</div><h2>'+esc(S.scanDone.title)+'</h2><p>'+esc(S.scanDone.text)+'</p>'+
     '<div class="btn-row" style="justify-content:center"><button class="btn green" data-go="mine" type="button">自分の貸出を見る</button><button class="btn" data-act="scanUser" type="button">続けて別の本を読み取る</button></div></section>';
   var st=copyStatus(b), e=curEmp(), emps=empArr().filter(function(x){ return x.active; });
-  var who='<div class="field"><label for="scanEmp">あなたの名前 <span class="small muted">（本人確認ではありません。必ず自分の名前を選んでください）</span></label>'+
-    '<select id="scanEmp"><option value="">― 名前を選んでください ―</option>'+emps.map(function(x){ return '<option value="'+esc(x.id)+'"'+(e&&e.id===x.id?" selected":"")+'>'+esc(x.name)+'（'+esc(x.dept)+'）</option>'; }).join("")+'</select></div>';
+  var dept = S.pickDept || (e ? (e.dept||"（所属なし）") : "");
+  var who='<div class="form-grid"><div class="field"><label for="scanDept">① 部を選ぶ</label>'+
+    '<select id="scanDept"><option value="">― 部を選んでください ―</option>'+deptList().map(function(d){ return '<option'+(d===dept?" selected":"")+'>'+esc(d)+'</option>'; }).join("")+'</select></div>'+
+    '<div class="field"><label for="scanEmp">② 名前を選ぶ</label>'+
+    '<select id="scanEmp"'+(dept?"":" disabled")+'><option value="">'+(dept?"― 名前を選んでください ―":"― 先に部を選んでください ―")+'</option>'+(dept?empsInDept(dept).map(function(x){ return '<option value="'+esc(x.id)+'"'+(e&&e.id===x.id?" selected":"")+'>'+esc(x.name)+'</option>'; }).join(""):"")+'</select></div></div>'+
+    '<p class="small muted">名前の選択は本人確認ではありません。必ず自分の名前を選んでください。</p>';
   var head='<section class="panel scan-book"><div class="copy-head"><span class="spine">'+esc(b.id)+'</span><span class="pill '+st.cls+'">'+st.label+'</span>'+chip(b)+'</div>'+
     '<h2>'+esc(b.title)+'</h2><p class="small muted">'+esc(b.author)+'　／　保管場所：'+esc(b.location)+'</p></section>';
   var act;
@@ -728,16 +736,25 @@ function invScanned(id){
 }
 
 /* ---------- dialogs ---------- */
-function pickEmpModal(){
-  var emps=empArr().filter(function(e){ return e.active; });
-  openModal('<h2>自分の名前を選んでください</h2><div class="notice warn"><b>名前の選択は本人確認ではありません。</b><span>必ず自分の名前を選んでください。他の人の名前で操作しないでください。</span></div>'+
-    (emps.length?'<div class="emp-pick">'+emps.map(function(e){ return '<button type="button" data-pick="'+esc(e.id)+'" aria-pressed="'+(S.empId===e.id)+'"><span class="n">'+esc(e.name)+chip(e)+'</span><span class="d">'+esc(e.dept)+'　従業員番号 '+esc(e.id)+'</span></button>'; }).join("")+'</div>':'<div class="empty">利用できる従業員が登録されていません。総務部へ連絡してください。</div>')+
+function pickEmpModal(dept){
+  var depts=deptList(), e=curEmp();
+  if(dept===undefined) dept = e ? (e.dept||"（所属なし）") : (depts.length===1 ? depts[0] : null);
+  var note='<div class="notice warn"><b>名前の選択は本人確認ではありません。</b><span>必ず自分の名前を選んでください。他の人の名前で操作しないでください。</span></div>';
+  var body;
+  if(!depts.length) body='<div class="empty">利用できる人が登録されていません。総務部へ連絡してください。</div>';
+  else if(!dept) body='<h3>① 部を選んでください</h3><div class="emp-pick dept-pick">'+depts.map(function(d){ return '<button type="button" data-dept="'+esc(d)+'"><span class="n">'+esc(d)+'</span><span class="d">'+empsInDept(d).length+' 人</span></button>'; }).join("")+'</div>';
+  else body='<div class="btn-row" style="align-items:center;justify-content:space-between"><h3>② '+esc(dept)+' の方：名前を選んでください</h3>'+(depts.length>1?'<button type="button" class="btn sm" data-dept="">← 部を選び直す</button>':"")+'</div>'+
+    '<div class="emp-pick">'+empsInDept(dept).map(function(x){ return '<button type="button" data-pick="'+esc(x.id)+'" aria-pressed="'+(S.empId===x.id)+'"><span class="n">'+esc(x.name)+chip(x)+'</span><span class="d">'+esc(x.dept)+'</span></button>'; }).join("")+'</div>';
+  openModal('<h2>自分の名前を選んでください</h2>'+note+body+
     '<p class="small muted">選んだ名前はこの端末に記憶されます。共用の端末では使い終わったら選び直してください。</p><div class="btn-row"><button class="btn" data-close type="button">閉じる</button></div>',
-  function(){ $("modalRoot").querySelectorAll("[data-pick]").forEach(function(b){ b.addEventListener("click",function(){
-    S.empId=b.getAttribute("data-pick"); try{ localStorage.setItem(LS_EMP,S.empId); }catch(e){}
-    closeModal(); toast(empName(S.empId)+" さんを選びました");
-    if(S.view==="title" && S.copyId){ var c=S.books[S.copyId]; if(c && copyStatus(c).key==="ok") borrowModal(c.id); }
-  }); }); });
+  function(){
+    $("modalRoot").querySelectorAll("[data-dept]").forEach(function(b){ b.addEventListener("click",function(){ pickEmpModal(b.getAttribute("data-dept")||null); }); });
+    $("modalRoot").querySelectorAll("[data-pick]").forEach(function(b){ b.addEventListener("click",function(){
+      S.empId=b.getAttribute("data-pick"); S.pickDept=null; try{ localStorage.setItem(LS_EMP,S.empId); }catch(e){}
+      closeModal(); toast(empName(S.empId)+" さんを選びました");
+      if(S.view==="title" && S.copyId){ var c=S.books[S.copyId]; if(c && copyStatus(c).key==="ok") borrowModal(c.id); }
+    }); });
+  });
 }
 function cbox(e, rows){ return '<dl class="confirm-box"><dt>利用者</dt><dd>'+esc(e.name)+'（'+esc(e.dept)+'・'+esc(e.id)+'）</dd>'+rows+'</dl>'; }
 function okRow(label){ return '<div id="saveErr" hidden></div><div class="btn-row"><button class="btn primary" id="mOk" type="button">'+(label||"確定する")+'</button><button class="btn" data-close type="button">やめる</button></div>'; }
@@ -889,6 +906,7 @@ document.addEventListener("input",function(ev){
 });
 document.addEventListener("change",function(ev){
   if(ev.target.id==="cat"){ S.cat=ev.target.value; render(); }
+  else if(ev.target.id==="scanDept"){ S.pickDept=ev.target.value||null; var ce=curEmp(); if(ce && (ce.dept||"（所属なし）")!==S.pickDept){ S.empId=null; try{ localStorage.removeItem(LS_EMP); }catch(x){} } render(); }
   else if(ev.target.id==="scanEmp"){ S.empId=ev.target.value||null; try{ if(S.empId) localStorage.setItem(LS_EMP,S.empId); else localStorage.removeItem(LS_EMP); }catch(e){} render(); }
   else if(ev.target.id==="scanShelved"){ var g=$("scanGo"); if(g) g.disabled=!ev.target.checked; }
   else if(ev.target.hasAttribute&&ev.target.hasAttribute("data-label")){ var k=ev.target.getAttribute("data-label"); if(ev.target.checked) S.labelSel[k]=true; else delete S.labelSel[k]; render(); }

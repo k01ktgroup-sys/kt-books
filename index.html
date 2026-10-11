@@ -4,7 +4,7 @@
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ビジネス書 貸出管理</title>
+<title>KTライブラリ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Outfit:wght@500;600;700&display=swap">
@@ -196,7 +196,7 @@ ul.rules{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
 <header class="top">
   <div class="stripe" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="top-inner">
-    <div class="brand"><b>ビジネス書 貸出管理</b><span>本社 総務部</span></div>
+    <div class="brand"><b>KTライブラリ</b><span>本社ビル8階 ／ 総務部</span></div>
     <div class="who none" id="who">
       <div><span class="lbl">利用者（本人確認ではありません）</span><span class="nm" id="whoName">名前が選ばれていません</span></div>
       <button class="btn sm primary" id="whoBtn" type="button">名前を選ぶ</button>
@@ -212,7 +212,7 @@ ul.rules{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
 <script>
 (function(){
 "use strict";
-var MAX_LOANS=2, MAX_EXT=1, LOAN_DAYS=14, EXT_DAYS=14;
+var MAX_LOANS=2, MAX_EXT=0, LOAN_DAYS=14, EXT_DAYS=14;  /* KTライブラリ：連続14日間まで（延長なし） */
 var LS_EMP="shoko.emp", LS_TOKEN="shoko.adminToken";
 /* Inside Apps Script the page talks to the server through google.script.run.
    Hosted elsewhere (the admin page on GitHub Pages, where the camera works) it POSTs to the published web app instead. */
@@ -282,7 +282,7 @@ function curEmp(){ var e=S.empId&&S.emps[S.empId]; return e && e.active ? e : nu
 function empName(id){ var e=S.emps[id]; return e?e.name:id; }
 function bookTitle(id){ var b=S.books[id]; return b?b.title:id; }
 function copyStatus(b){
-  if(b.suspended) return {key:"off",label:"利用停止",cls:"st-off"};
+  if(b.suspended) return /^閲覧のみ/.test(b.suspendReason||"") ? {key:"off",label:"閲覧のみ",cls:"st-off",viewOnly:true} : {key:"off",label:"利用停止",cls:"st-off"};
   var l=activeOfBook(b.id);
   if(l) return isOver(l)?{key:"busy",label:"貸出中（期限超過）",cls:"st-bad",loan:l}:{key:"busy",label:"貸出中",cls:"st-busy",loan:l};
   return {key:"ok",label:"貸出可能",cls:"st-ok"};
@@ -397,8 +397,8 @@ function viewBooks(){
 /* ----- 書籍詳細（タイトル単位：全冊） ----- */
 function copyCard(b, hl){
   var st=copyStatus(b), e=curEmp(), act="";
-  if(st.key==="off") act='<div class="notice plain"><b>利用停止中のため借りられません。</b>'+(b.suspendReason?'<span>理由：'+esc(b.suspendReason)+'</span>':"")+'</div>';
-  else if(st.loan && e && st.loan.empId===e.id) act='<div class="notice info"><b>この本はあなたが借りています（返却期限 '+jp(st.loan.dueDate)+'）。</b></div><div class="btn-row"><button class="btn primary" data-act="return" data-id="'+esc(st.loan.loanNo)+'" type="button">返却する</button><button class="btn" data-act="extend" data-id="'+esc(st.loan.loanNo)+'" type="button"'+((st.loan.extensions>=MAX_EXT||isOver(st.loan))?" disabled":"")+'>延長する</button></div>';
+  if(st.key==="off") act = st.viewOnly ? '<div class="notice plain"><b>KTライブラリ内で閲覧してください（貸出はありません）。</b></div>' : '<div class="notice plain"><b>利用停止中のため借りられません。</b>'+(b.suspendReason?'<span>理由：'+esc(b.suspendReason)+'</span>':"")+'</div>';
+  else if(st.loan && e && st.loan.empId===e.id) act='<div class="notice info"><b>この本はあなたが借りています（返却期限 '+jp(st.loan.dueDate)+'）。</b></div><div class="btn-row"><button class="btn primary" data-act="return" data-id="'+esc(st.loan.loanNo)+'" type="button">返却する</button>'+(MAX_EXT?'<button class="btn" data-act="extend" data-id="'+esc(st.loan.loanNo)+'" type="button"'+((st.loan.extensions>=MAX_EXT||isOver(st.loan))?" disabled":"")+'>延長する</button>':"")+'</div>';
   else if(st.loan) act='<p class="small muted">ほかの人が借りています。返却予定：'+jp(st.loan.dueDate)+'</p>';
   else if(!e) act='<button class="btn primary" data-act="pickEmp" type="button">名前を選んでから借りる</button>';
   else act='<button class="btn primary" data-act="borrow" data-id="'+esc(b.id)+'" type="button">この本（'+esc(b.id)+'）を借りる</button>';
@@ -434,14 +434,14 @@ function viewScanned(){
   var head='<section class="panel scan-book"><div class="copy-head"><span class="spine">'+esc(b.id)+'</span><span class="pill '+st.cls+'">'+st.label+'</span>'+chip(b)+'</div>'+
     '<h2>'+esc(b.title)+'</h2><p class="small muted">'+esc(b.author)+'　／　保管場所：'+esc(b.location)+'</p></section>';
   var act;
-  if(st.key==="off") act='<div class="notice plain"><b>この本は利用停止中のため借りられません。</b>'+(b.suspendReason?'<span>理由：'+esc(b.suspendReason)+'</span>':"")+'</div>';
+  if(st.key==="off") act = st.viewOnly ? '<div class="notice plain"><b>KTライブラリ内で閲覧してください（貸出はありません）。</b></div>' : '<div class="notice plain"><b>この本は利用停止中のため借りられません。</b>'+(b.suspendReason?'<span>理由：'+esc(b.suspendReason)+'</span>':"")+'</div>';
   else if(!e) act=who+'<p class="small">名前を選ぶと、「借りる」「返却する」のボタンが表示されます。</p>';
   else if(st.loan && st.loan.empId===e.id){
     var l=st.loan, over=isOver(l), canExt=l.extensions<MAX_EXT && !over;
     act=who+'<dl class="confirm-box"><dt>利用者</dt><dd>'+esc(e.name)+'</dd><dt>本</dt><dd>'+esc(b.id)+' '+esc(b.title)+'</dd><dt>返却期限</dt><dd'+(over?' style="color:var(--bad)"':"")+'>'+jp(l.dueDate)+(over?'（期限超過）':"")+'</dd><dt>戻す書棚</dt><dd>'+esc(b.location)+'</dd></dl>'+
       '<label class="check" for="scanShelved"><input type="checkbox" id="scanShelved"><span><b>本を指定の書棚へ戻しました</b></span></label>'+
       '<button class="btn big primary" id="scanGo" data-act="inlineReturn" data-id="'+esc(l.loanNo)+'" type="button" disabled>返却する</button>'+
-      (canExt?'<button class="btn" data-act="inlineExtend" data-id="'+esc(l.loanNo)+'" type="button">返さずに延長する（'+js(addDays(l.originalDueDate||l.dueDate,EXT_DAYS))+' まで）</button>':'<p class="small muted">'+(over?"期限を過ぎているため延長できません。":"延長は1回までです（延長済み）。")+'</p>');
+      (canExt?'<button class="btn" data-act="inlineExtend" data-id="'+esc(l.loanNo)+'" type="button">返さずに延長する（'+js(addDays(l.originalDueDate||l.dueDate,EXT_DAYS))+' まで）</button>':'<p class="small muted">'+(MAX_EXT===0?"延長はできません（貸出は連続14日間までです）。":over?"期限を過ぎているため延長できません。":"延長は1回までです（延長済み）。")+'</p>');
   }
   else if(st.loan) act=who+'<div class="notice warn"><b>この本はほかの人が借りています。</b><span>返却予定：'+jp(st.loan.dueDate)+'。自分が借りた本の場合は、上の名前が正しいか確認してください。</span></div>';
   else {
@@ -477,33 +477,36 @@ function viewMine(){
   var cards=act.length?act.map(function(l){
     var over=t>l.dueDate, left=diffDays(t,l.dueDate), b=S.books[l.bookId]||{};
     var lt=over?'<span class="left bad">期限を '+(-left)+' 日過ぎています</span>':left===0?'<span class="left busy">今日が返却期限です</span>':'<span class="left '+(left<=3?"busy":"ok")+'">あと '+left+' 日</span>';
-    var extNote=l.extensions>=MAX_EXT?"延長済み（延長は1回まで）":over?"期限超過のため延長できません":"あと1回延長できます（元の期限＋14日）";
+    var extNote=MAX_EXT===0?"延長はできません（連続14日間まで）":l.extensions>=MAX_EXT?"延長済み（延長は1回まで）":over?"期限超過のため延長できません":"あと1回延長できます（元の期限＋14日）";
     return '<article class="loan'+(over?" over":"")+'">'+(over?'<div class="notice bad"><b>返却期限を過ぎています。すぐに指定の書棚へ戻し、返却登録をしてください。</b></div>':"")+
       '<div class="copy-head"><span class="spine">'+esc(l.bookId)+'</span><b>'+esc(bookTitle(l.bookId))+'</b></div>'+
       '<div class="due"><span class="muted small">返却期限</span><span class="d">'+jp(l.dueDate)+'</span>'+lt+'</div>'+
       '<p class="small muted">貸出番号 <span class="mono">'+esc(l.loanNo)+'</span>　貸出日 '+js(l.loanDate)+'<br>返却先：'+esc(b.location||"—")+'<br>'+extNote+'</p>'+
-      '<div class="btn-row"><button class="btn primary" data-act="return" data-id="'+esc(l.loanNo)+'" type="button">返却する</button><button class="btn" data-act="extend" data-id="'+esc(l.loanNo)+'" type="button"'+((l.extensions>=MAX_EXT||over)?" disabled":"")+'>延長する</button></div></article>';
+      '<div class="btn-row"><button class="btn primary" data-act="return" data-id="'+esc(l.loanNo)+'" type="button">返却する</button>'+(MAX_EXT?'<button class="btn" data-act="extend" data-id="'+esc(l.loanNo)+'" type="button"'+((l.extensions>=MAX_EXT||over)?" disabled":"")+'>延長する</button>':"")+'</div></article>';
   }).join(""):'<div class="empty">いま借りている本はありません。</div>';
   return '<section class="panel"><h2>'+esc(e.name)+' さんの貸出</h2><p>いま <b>'+act.length+' 冊</b> 借りています（上限 '+MAX_LOANS+' 冊）。'+(act.length<MAX_LOANS?'あと '+(MAX_LOANS-act.length)+' 冊借りられます。':'上限に達しています。')+'</p></section>'+
     (act.length?qrButton("返す本のQRコードを読み取っても返却できます"):"")+'<div class="list">'+cards+'</div>'+
     (past.length?'<details class="panel"><summary style="cursor:pointer;font-weight:700">これまでに返却した本（'+past.length+'件）</summary><div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>管理番号</th><th>書名</th><th>貸出日</th><th>返却日</th></tr></thead><tbody>'+past.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td class="mono">'+esc(l.bookId)+'</td><td class="wrap">'+esc(bookTitle(l.bookId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.returnDate)+'</td></tr>'; }).join("")+'</tbody></table></div></details>':"");
 }
 
-/* ----- ルール ----- */
+/* ----- ルール（「共通書籍の活用について」に基づく） ----- */
 function viewRules(){
-  return '<section class="panel"><h2>本の借り方</h2><ol class="steps">'+
-  '<li><div>画面上部の<b>「名前を選ぶ」</b>で自分の名前を選びます。<br><span class="small muted">名前の選択は本人確認ではありません。必ず自分の名前を選んでください。</span></div></li>'+
-  '<li><div>借りたい本の<b>ラベルのQRコード</b>をスマートフォンで読み取ります（カメラアプリ、またはこの画面の「QRコードで借りる・返す」）。<br><span class="small muted">QRが使えないときは「本をさがす」で、手に取った本と同じ管理番号を選びます。</span></div></li>'+
-  '<li><div>確認画面で<b>自分の名前・管理番号・書名</b>を確かめて<b>「確定する」</b>を押します。</div></li>'+
-  '<li><div>「登録しました」と表示されたら持ち出します。表示されないときは登録されていません。</div></li></ol></section>'+
+  return '<section class="panel"><h2>KTライブラリとは</h2>'+
+  '<p>コア人材の成長に役立つ書籍を会社が選定し、閲読をすすめる制度です。書籍は<b>本社ビル8階のKTライブラリ</b>に置いています。コア人材は自由に閲覧でき、<b>連続14日間まで</b>借りることができます。</p>'+
+  '<div class="grid2"><div class="notice info"><b>目的・期待される効果</b><span>① 生産性の向上：コア人材の成長促進（人格形成、ビジネススキル・テクニックの習得）、社内コミュニケーションの円滑化（共通言語・共通認識の形成）</span><span>② 教育コストの抑制</span></div>'+
+  '<div class="notice warn"><b>課題図書</b><span>KTライブラリの書籍のうち、上長が部下（コア人材に限る）に読了を求めるものです。個人の成長と、組織の共通言語・共通認識づくりが目的です。</span><span><b>『リーダーの仮面』は全管理職の課題図書です。</b></span></div></div></section>'+
+  '<div class="grid2"><section class="panel"><h3>貸出ルール</h3><ul class="rules"><li>利用できるのは<b>コア人材</b>です</li><li>貸出は<b>連続14日間まで</b>（延長はありません）</li><li>1人<b>'+MAX_LOANS+'冊まで</b>借りられます</li><li>貸出中の本は借りられません</li><li>業界誌（高齢者住宅新聞・シルバー新報）はライブラリ内で閲覧してください</li></ul></section>'+
+  '<section class="panel"><h3>書籍の選定と管理</h3><ul class="rules"><li><b>選定</b>：社長（読みたい本・おすすめの本は、<b>上長を通して</b>誰でも提案できます）</li><li><b>発注・貸出管理</b>：総務部</li><li>棚卸しは3か月に1回、総務部が行います</li></ul></section></div>'+
+  '<section class="panel"><h2>本の借り方</h2><ol class="steps">'+
+  '<li><div>借りたい本の<b>QRラベル</b>をスマートフォンで読み取ります（カメラアプリ、またはこの画面の「QRコードで借りる・返す」）。</div></li>'+
+  '<li><div>開いた画面で<b>自分の名前</b>を選びます（次回からは自動で選ばれます）。<br><span class="small muted">名前の選択は本人確認ではありません。必ず自分の名前を選んでください。</span></div></li>'+
+  '<li><div><b>名前・管理番号・書名・返却期限</b>を確かめて「<b>この内容で借りる</b>」を押します。</div></li>'+
+  '<li><div>「借りました」と表示されたら持ち出します。表示されないときは登録されていません。</div></li></ol></section>'+
   '<section class="panel"><h2>本の返し方</h2><ol class="steps">'+
-  '<li><div>本を<b>指定の書棚（保管場所）</b>へ戻します。</div></li>'+
-  '<li><div>本のQRコードを読み取るか、<b>「自分の貸出」</b>で<b>「返却する」</b>を押します。</div></li>'+
-  '<li><div>「書棚へ戻しました」にチェックを入れ、<b>「確定する」</b>を押します。</div></li></ol></section>'+
-  '<section class="panel"><h2>延長のしかた</h2><ol class="steps"><li><div><b>「自分の貸出」</b>で<b>「延長する」</b>を押し、新しい期限を確認して確定します。延長は1回まで、元の返却期限から14日間です。期限を過ぎると延長できません。</div></li></ol></section>'+
-  '<div class="grid2"><section class="panel"><h3>貸出ルール</h3><ul class="rules"><li>貸出は<b>1人2冊まで</b></li><li>貸出期間は<b>14日間</b></li><li>延長は<b>1回まで</b>（元の返却期限＋14日）</li><li>貸出中・利用停止中の本は借りられません</li><li>利用できるのは本社の従業員のみです</li></ul></section>'+
-  '<section class="panel"><h3>困ったとき（総務部へ連絡）</h3><ul class="rules"><li>期限を過ぎた → すぐに返却して返却登録</li><li>なくした・汚した・破いた → <b>総務部へ報告</b></li><li>間違えて登録した → <b>総務部へ連絡</b>（自分では取り消せません）</li><li>QRが読み取れない・ラベルがはがれた → 総務部へ連絡</li><li>「保存できませんでした」→ もう一度操作。続く場合は総務部へ</li></ul></section></div>'+
-  '<div class="notice info"><b>総務部の管理画面について</b><span>「総務部」タブは管理者パスワードで保護されています。名前の選択とは別の認証です。棚卸しは3か月に1回、総務部が行います。</span></div>';
+  '<li><div>本を<b>KTライブラリの元の場所</b>へ戻します。</div></li>'+
+  '<li><div>本のQRラベルを読み取り、「書棚へ戻しました」にチェックを入れて「<b>返却する</b>」を押します。<br><span class="small muted">「自分の貸出」の「返却する」からもできます。</span></div></li></ol></section>'+
+  '<section class="panel"><h3>困ったとき（総務部へ連絡）</h3><ul class="rules"><li>期限を過ぎた → すぐに返却して返却登録</li><li>なくした・汚した・破いた → <b>総務部へ報告</b></li><li>間違えて登録した → <b>総務部へ連絡</b>（自分では取り消せません）</li><li>QRが読み取れない・ラベルがはがれた → 総務部へ連絡</li><li>「保存できませんでした」→ もう一度操作。続く場合は総務部へ</li></ul></section>'+
+  '<div class="notice plain"><b>総務部の管理画面について</b><span>「総務部」タブは管理者パスワードで保護されています。名前の選択とは別の認証です。</span></div>';
 }
 
 /* ----- 総務部：ログイン ----- */
@@ -768,7 +771,7 @@ function cancelModal(no){
     $("mOk").addEventListener("click",function(){ runSave(this,"cancelLoan",{token:S.token,loanNo:no,reason:$("cReason").value.trim()},"貸出 "+no+" を取り消しました"); }); });
 }
 function bookForm(id){
-  var isNew=!id, b=id?S.books[id]:{title:"",author:"",category:"",location:"本社3F 総務部前 書棚A-1段",registeredDate:S.today};
+  var isNew=!id, b=id?S.books[id]:{title:"",author:"",category:"",location:"本社ビル8階 KTライブラリ",registeredDate:S.today};
   var cats=Array.from(new Set(bookArr().map(function(x){return x.category;}))).sort();
   var sameN=id?bookArr().filter(function(x){ return groupOf(x.id)===groupOf(id); }).length:0;
   openModal('<h2>'+(isNew?"新しい書籍を登録":"書籍を編集（"+esc(id)+"）")+'</h2><div class="form-grid">'+
@@ -937,7 +940,7 @@ if(IN_GAS){
   if(/admin\.html$/.test(location.pathname)){
     if(!initialCopy) S.view="admin";
     var bs=document.querySelector(".brand span"); if(bs) bs.textContent="本社 総務部（管理用）";
-    document.title="ビジネス書 貸出管理（総務部）";
+    document.title="KTライブラリ（総務部）";
   }
   boot();
 }

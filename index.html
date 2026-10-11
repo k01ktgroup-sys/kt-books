@@ -822,11 +822,11 @@ function bookToggle(id){
 function empForm(id){
   var e=id?S.emps[id]:{id:"",name:"",dept:"",active:true};
   openModal('<h2>'+(id?"従業員を編集":"従業員を登録")+'</h2><div class="form-grid">'+
-    '<div class="field"><label for="eId">従業員番号</label><input type="text" id="eId" value="'+esc(e.id)+'"'+(id?" readonly":"")+'></div>'+
+    '<div class="field"><label for="eId">従業員番号'+(id?"":'<span class="small muted">（ない場合は空欄）</span>')+'</label><input type="text" id="eId" value="'+esc(e.id)+'"'+(id?" readonly":' placeholder="空欄なら自動（A0001〜）"')+'>'+(id?"":'<span class="hint">空欄のときは A0001 から順に自動で番号を付けます</span>')+'</div>'+
     '<div class="field"><label for="eName">氏名</label><input type="text" id="eName" value="'+esc(e.name)+'"></div>'+
-    '<div class="field full"><label for="eDept">所属</label><input type="text" id="eDept" value="'+esc(e.dept)+'"></div>'+
+    '<div class="field full"><label for="eDept">所属</label><input type="text" id="eDept" list="deptList" value="'+esc(e.dept)+'"><datalist id="deptList">'+deptList().map(function(d){ return '<option value="'+esc(d)+'">'; }).join("")+'</datalist><span class="hint">一覧から選ぶと表記がそろいます（部の選択画面に使われます）</span></div>'+
     '<label class="check full" for="eActive"><input type="checkbox" id="eActive"'+(e.active?" checked":"")+'><span><b>利用可能</b>（外すと停止）</span></label></div>'+okRow("保存する"),
-  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:$("eDept").value,active:$("eActive").checked}},"従業員を保存しました："+$("eName").value.trim()); }); });
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:$("eDept").value,active:$("eActive").checked}},(function(nm){ return function(r){ return "従業員を保存しました："+nm+"（従業員番号 "+((r&&r.id)||"")+"）"; }; })($("eName").value.trim())); }); });
 }
 function empToggle(id){
   var e=S.emps[id], to=!e.active, n=activeOfEmp(id).length;

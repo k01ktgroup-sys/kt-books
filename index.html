@@ -608,7 +608,7 @@ function aScan(){
     (st.loan?'<dt>借りている人</dt><dd><b>'+esc(e?e.name:st.loan.empId)+'</b>（'+esc(e?e.dept:"")+'・'+esc(st.loan.empId)+'）</dd><dt>貸出日／返却期限</dt><dd>'+js(st.loan.loanDate)+' ／ '+js(st.loan.dueDate)+(isOver(st.loan)?' <span class="pill st-bad">'+diffDays(st.loan.dueDate,S.today)+'日超過</span>':"")+'</dd><dt>延長</dt><dd>'+st.loan.extensions+' 回</dd>':"")+
     (b.suspended?'<dt>停止理由</dt><dd>'+esc(b.suspendReason||"—")+'</dd>':"")+'</dl>'+
     '<div class="btn-row">'+(st.loan?'<button class="btn primary" data-act="adminReturn" data-id="'+esc(st.loan.loanNo)+'" type="button">返却処理</button><button class="btn" data-act="adminCancel" data-id="'+esc(st.loan.loanNo)+'" type="button">貸出を取消</button>':"")+
-    '<button class="btn" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button><button class="btn" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?(/^準備中/.test(b.suspendReason||"")?"準備完了にする":"停止を解除"):"利用停止")+'</button><button class="btn" data-act="asUser" data-id="'+esc(b.id)+'" type="button">利用者として借りる・返す</button></div>'+
+    '<button class="btn" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button>'+(st.preparing?'<button class="btn primary" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="0" type="button">準備完了にする</button>':(!b.suspended&&!st.loan?'<button class="btn" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="1" type="button">準備中にする</button>':""))+(st.preparing?"":'<button class="btn" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button>')+'<button class="btn" data-act="asUser" data-id="'+esc(b.id)+'" type="button">利用者として借りる・返す</button></div>'+
     (hist.length?'<h3>この本の最近の貸出</h3><div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>氏名</th><th>貸出日</th><th>返却日</th><th>状態</th></tr></thead><tbody>'+hist.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td>'+esc(empName(l.empId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.returnDate)+'</td><td>'+statusPill(l)+'</td></tr>'; }).join("")+'</tbody></table></div>':"")+'</section>'+hint;
 }
 function statusPill(l){ return l.status==="returned"?'<span class="pill st-ok">返却済み</span>':l.status==="cancelled"?'<span class="pill st-off">取消</span>':isOver(l)?'<span class="pill st-bad">期限超過</span>':'<span class="pill st-busy">貸出中</span>'; }
@@ -687,8 +687,8 @@ function aBooks(){
   return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>書籍台帳（'+gs.length+'タイトル・'+bookArr().length+'冊）</h2><button class="btn sm primary" data-act="bookNew" type="button">＋ 新しい書籍を登録</button></div>'+
   '<p class="small muted">同じ本が複数あるときは「＋1冊追加」で複本を登録します。管理番号は「書籍コード-冊番号」（例：BK-005-2）で、1冊ごとにQRラベルを貼ります。'+(bookArr().length>=30?'<br><b style="color:var(--busy)">所蔵が30冊に達しました（当初想定は30冊未満）。</b>':"")+'</p>'+
   '<div class="tbl-wrap"><table><thead><tr><th>管理番号</th><th>保管場所</th><th>登録日</th><th>状況</th><th></th></tr></thead><tbody>'+
-  gs.map(function(g){ return '<tr class="grp"><td colspan="4" class="wrap"><span class="mono">'+esc(g.id)+'</span>　'+esc(g.title)+chip(g)+'<br><span class="small muted" style="font-weight:400">'+esc(g.author)+'／'+esc(g.category)+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="addCopy" data-id="'+esc(g.copies[0].id)+'" type="button">＋1冊追加</button><button class="btn sm" data-act="introEdit" data-id="'+esc(g.id)+'" type="button">紹介文</button></div></td></tr>'+
-    g.copies.map(function(b){ var st=copyStatus(b); return '<tr><td><span class="spine">'+esc(b.id)+'</span></td><td>'+esc(b.location)+'</td><td>'+js(b.registeredDate)+'</td><td><span class="pill '+st.cls+'">'+st.label+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button><button class="btn sm" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?(/^準備中/.test(b.suspendReason||"")?"準備完了にする":"停止を解除"):"利用停止")+'</button></div></td></tr>'; }).join(""); }).join("")+
+  gs.map(function(g){ return '<tr class="grp"><td colspan="4" class="wrap"><span class="mono">'+esc(g.id)+'</span>　'+esc(g.title)+chip(g)+'<br><span class="small muted" style="font-weight:400">'+esc(g.author)+'／'+esc(g.category)+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="addCopy" data-id="'+esc(g.copies[0].id)+'" type="button">＋1冊追加</button><button class="btn sm" data-act="introEdit" data-id="'+esc(g.id)+'" type="button">紹介文</button>'+(g.copies.length>1&&g.copies.some(function(c){ return copyStatus(c).preparing; })?'<button class="btn sm primary" data-act="prepGroup" data-id="'+esc(g.id)+'" data-to="0" type="button">全冊を準備完了</button>':"")+(g.copies.length>1&&g.copies.some(function(c){ return !c.suspended && !copyStatus(c).loan; })?'<button class="btn sm" data-act="prepGroup" data-id="'+esc(g.id)+'" data-to="1" type="button">全冊を準備中</button>':"")+'</div></td></tr>'+
+    g.copies.map(function(b){ var st=copyStatus(b); return '<tr><td><span class="spine">'+esc(b.id)+'</span></td><td>'+esc(b.location)+'</td><td>'+js(b.registeredDate)+'</td><td><span class="pill '+st.cls+'">'+st.label+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button>'+(st.preparing?'<button class="btn sm primary" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="0" type="button">準備完了にする</button>':(!b.suspended&&!st.loan?'<button class="btn sm" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="1" type="button">準備中にする</button>':""))+(st.preparing?"":'<button class="btn sm" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button>')+'</div></td></tr>'; }).join(""); }).join("")+
   '</tbody></table></div></section>';
 }
 function aEmps(){
@@ -948,6 +948,16 @@ function addCopyModal(id){
     '<label class="check" for="cPrep"><input type="checkbox" id="cPrep"><span><b>準備中として追加する</b>（現物がまだ本社にない）</span></label>'+okRow("追加する"),
   function(){ $("mOk").addEventListener("click",function(){ runSave(this,"addCopy",{token:S.token,bookId:id,preparing:$("cPrep").checked},function(r){ return "追加しました："+r.id+"。「QRラベル」でラベルを作成してください"; },function(r){ S.labelSel[r.id]=true; }); }); });
 }
+function prepModal(ids, to){
+  var bs=ids.map(function(x){ return S.books[x]; }).filter(Boolean);
+  if(!bs.length) return;
+  var title=bs[0].title;
+  openModal('<h2>'+(to?"準備中にしますか？":"準備完了にしますか？")+'</h2>'+
+    '<dl class="confirm-box"><dt>本</dt><dd>'+esc(title)+'</dd><dt>対象</dt><dd>'+bs.map(function(b){ return '<span class="spine">'+esc(b.id)+'</span>'; }).join(" ")+'</dd></dl>'+
+    (to?'<p class="small">現物がまだ本社にない状態にします。従業員の画面に「準備中（入荷待ち）」と表示され、<b>借りる・郵送の申請ができなくなります</b>。</p>':
+        '<p class="small">本が本社に届いた状態にします。<b>借りる・郵送の申請ができるようになります</b>。QRラベルが貼ってあるか確認してください。</p>')+okRow(to?"準備中にする":"準備完了にする"),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"setPreparing",{token:S.token,bookIds:ids,preparing:!!to},function(r){ return (to?"準備中にしました：":"準備完了にしました（貸出できます）：")+r.changed.join("、"); }); }); });
+}
 function bookToggle(id){
   var b=S.books[id], to=!b.suspended, prep=/^準備中/.test(b.suspendReason||"");
   openModal('<h2>'+(to?"利用停止にしますか？":prep?"準備完了にしますか？（本が本社に届いた）":"利用停止を解除しますか？")+'</h2><dl class="confirm-box"><dt>本</dt><dd><span class="spine">'+esc(id)+'</span> '+esc(b.title)+'</dd></dl>'+
@@ -1013,6 +1023,8 @@ document.addEventListener("click",function(ev){
     shipScan:function(){ var no=id; openScanner({title:"発送する本のQRを読み取る",help:"郵送する本のQRラベルを枠の中に写してください。",manual:true,onCode:function(code){ shipScanned(no,code); }}); },
     reqCancel:function(){ reqCancelModal(id); },
     introEdit:function(){ introForm(id); },
+    prepSet:function(){ prepModal([id], t.getAttribute("data-to")==="1"); },
+    prepGroup:function(){ var to=t.getAttribute("data-to")==="1"; var ids=(groupById(id)||{copies:[]}).copies.filter(function(c){ var st=copyStatus(c); return to ? (!c.suspended && !st.loan) : st.preparing; }).map(function(c){ return c.id; }); prepModal(ids, to); },
     copyUrl:function(){ var u=$("introUrl"); try{ navigator.clipboard.writeText(u.value).then(function(){ toast("リンクをコピーしました"); },function(){ u.select(); toast("リンクを選択しました。コピーしてください"); }); }catch(x){ u.select(); } },
     inlineBorrow:function(){ var e=curEmp(), b=S.books[id]; inlineSave(t,"borrow",{empId:e.id,bookId:id},function(r){ return {title:"借りました", text:"「"+b.title+"」（"+id+"）を "+e.name+" さんの名前で登録しました。返却期限は "+jp(r.loan.dueDate)+" です。"}; }); },
     inlineReturn:function(){ var l=S.loans[id], b=S.books[l.bookId]||{}; inlineSave(t,"returnLoan",{loanNo:id},function(){ return {title:"返却しました", text:"「"+(b.title||l.bookId)+"」の返却を登録しました。"}; }); },

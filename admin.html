@@ -261,7 +261,7 @@ function applyState(st){
   S.emps={}; st.emps.forEach(function(e){ S.emps[e.id]=e; });
   S.loans={}; st.loans.forEach(function(l){ S.loans[l.loanNo]=l; });
   S.intros={}; (st.intros||[]).forEach(function(x){ S.intros[x.group]=x; });
-  S.mailReqs=st.mailReqs||[]; S.mailExtraDays=st.mailExtraDays||7;
+  S.mailReqs=st.mailReqs||[]; S.mailExtraDays=st.mailExtraDays||7; S.undoMin=st.selfUndoMin||10;
   S.loaded=true; S.loadErr=null;
 }
 function refresh(){
@@ -308,7 +308,8 @@ function groups(){
     g.title=f.title; g.author=f.author; g.category=f.category; g.sample=f.sample;
     g.avail=g.copies.filter(function(c){ return copyStatus(c).key==="ok"; }).length;
     g.lent=g.copies.filter(function(c){ return copyStatus(c).key==="busy"; }).length;
-    g.key = g.avail ? "ok" : g.lent ? "busy" : "off"; return g; });
+    var sts=g.copies.map(copyStatus);
+    g.key = g.avail ? "ok" : g.lent ? "busy" : sts.some(function(x){ return x.preparing; }) ? "prep" : sts.every(function(x){ return x.viewOnly; }) ? "view" : "off"; return g; });
 }
 function parseCode(text){
   text=String(text||"").trim();
@@ -390,12 +391,31 @@ function groupById(id){ return groups().filter(function(x){ return x.id===id; })
 function introOf(g){ return (S.intros||{})[g]||{}; }
 /* counts per title: 借りられる冊数・貸出中の冊数と返却予定 */
 function countsHtml(g){
-  if(g.key==="off" && g.copies.every(function(c){ return copyStatus(c).viewOnly; })) return '<span class="pill st-off">貸出なし（本社ビル8階の書庫（KTライブラリ）で閲覧）</span>';
+  if(g.copies.every(function(c){ return copyStatus(c).viewOnly; })) return '<span class="pill st-off">貸出なし（本社ビル8階の書庫（KTライブラリ）で閲覧）</span>';
   var prep=g.copies.filter(function(c){ return copyStatus(c).preparing; }).length;
   if(prep===g.copies.length) return '<span class="pill st-busy">準備中（入荷待ち）</span><span class="small muted">本社に届き次第、借りられるようになります</span>';
   var lent=g.copies.map(function(c){ return copyStatus(c).loan; }).filter(Boolean).sort(function(a,b){ return a.dueDate<b.dueDate?-1:1; });
   return '<span class="pill '+(g.avail?"st-ok":"st-off")+'">借りられる '+g.avail+'冊</span>'+
     (prep?'<span class="pill st-off">準備中 '+prep+'冊</span>':"")+(lent.length?'<span class="pill st-busy">貸出中 '+lent.length+'冊</span><span class="small muted">返却予定 '+lent.map(function(l){ return '<span class="mono">'+esc(l.dueDate.slice(5).replace("-","/"))+'</span>'; }).join("・")+'</span>':"");
+}
+function jstMs(s){ var m=/(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)/.exec(String(s||"")); return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]-9,+m[5],+m[6]):0; }
+/* minutes left to undo this person's own borrow/return; 0 = no longer possible */
+function undoLeft(l){
+  if(!l || /^郵送/.test(l.note||"")) return 0;
+  var t = l.status==="active" ? jstMs(l.createdAt) : l.status==="returned" ? jstMs(l.updatedAt) : 0;
+  if(!t) return 0;
+  var left=Math.ceil(S.undoMin-(Date.now()-t)/60000);
+  return left>0?left:0;
+}
+function undoModal(no){
+  var l=S.loans[no], e=curEmp(); if(!l||!e) return;
+  var b=S.books[l.bookId]||{}, isBorrow=l.status==="active";
+  openModal('<h2>'+(isBorrow?"借りた登録を取り消しますか？":"返却の登録を取り消しますか？")+'</h2>'+
+    cbox(e,'<dt>本</dt><dd><span class="spine">'+esc(l.bookId)+'</span> '+esc(b.title||"")+'</dd><dt>貸出番号</dt><dd class="mono">'+esc(no)+'</dd>')+
+    (isBorrow?'<p class="small">間違えて借りる登録をした場合に使います。取り消すと、この本は<b>借りていない状態</b>に戻ります。本は元の場所に戻してください。</p>':
+              '<p class="small">間違えて返却の登録をした場合に使います。取り消すと、この本は<b>あなたが借りている状態</b>に戻ります。</p>')+
+    '<p class="small muted">登録から'+S.undoMin+'分以内だけ、自分で取り消せます。記録は「本人が取消」として残ります。</p>'+okRow("取り消す"),
+  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"selfUndo",{loanNo:no,empId:e.id},isBorrow?"借りた登録を取り消しました":"返却の登録を取り消しました（借りている状態に戻りました）",function(){ S.scanDone=null; S.view="mine"; }); }); });
 }
 function whoLine(e){
   return '<div class="who-line"><span>利用者：<b>'+esc(e.name)+'</b>（'+esc(e.dept)+'）</span><button class="btn sm" data-act="pickEmp" type="button">変更</button></div>';
@@ -417,7 +437,7 @@ function viewBooks(){
   '<section class="panel"><h2>本をさがす</h2>'+
   '<div class="field"><label for="q">書名・著者・分類で検索</label><input type="search" id="q" placeholder="例：マネジメント、安藤" value="'+esc(S.q)+'"></div>'+
   '<div class="field"><label for="cat">分類</label><select id="cat"><option value="">すべての分類</option>'+cats.map(function(c){return '<option'+(S.cat===c?" selected":"")+'>'+esc(c)+'</option>';}).join("")+'</select></div>'+
-  '<div class="field"><span class="lab">貸出状況</span><div class="seg" role="group">'+[["all","すべて"],["ok","借りられる"],["busy","すべて貸出中"],["off","閲覧のみ・準備中"]].map(function(s){ return '<button type="button" data-status="'+s[0]+'" aria-pressed="'+(S.status===s[0])+'">'+s[1]+'</button>'; }).join("")+'</div></div></section>'+
+  '<div class="field"><span class="lab">貸出状況</span><div class="seg" role="group">'+[["all","すべて"],["ok","借りられる"],["busy","すべて貸出中"],["prep","準備中"],["view","閲覧のみ"]].map(function(s){ return '<button type="button" data-status="'+s[0]+'" aria-pressed="'+(S.status===s[0])+'">'+s[1]+'</button>'; }).join("")+'</div></div></section>'+
   '<p class="count">'+rows.length+' 種類を表示中（全 '+gs.length+' 種類・'+bookArr().length+' 冊）</p>'+
   (rows.length?'<div class="list">'+rows.map(function(g){
     return '<article class="title-card">'+
@@ -484,7 +504,8 @@ function viewScanned(){
   var back='<button class="btn back" data-go="books" type="button">← 本の一覧へ</button>';
   if(!b) return back+'<div class="notice bad"><b>管理番号「'+esc(id)+'」の本は台帳にありません。</b><span>ラベルが正しいか確認し、総務部へ連絡してください。</span></div>';
   if(S.scanDone) return '<section class="panel done-panel"><div class="done-mark" aria-hidden="true">&#10003;</div><h2>'+esc(S.scanDone.title)+'</h2><p>'+esc(S.scanDone.text)+'</p>'+
-    '<div class="btn-row" style="justify-content:center"><button class="btn green" data-go="mine" type="button">自分の貸出を見る</button><button class="btn" data-act="scanUser" type="button">続けて別の本を読み取る</button></div></section>';
+    '<div class="btn-row" style="justify-content:center"><button class="btn green" data-go="mine" type="button">自分の貸出を見る</button><button class="btn" data-act="scanUser" type="button">続けて別の本を読み取る</button></div>'+
+    (S.scanDone.loanNo?'<p class="small muted">間違えた場合は、'+S.undoMin+'分以内なら <button class="btn sm" data-act="selfUndo" data-id="'+esc(S.scanDone.loanNo)+'" type="button">この登録を取り消す</button></p>':"")+'</section>';
   var st=copyStatus(b), e=curEmp(), emps=empArr().filter(function(x){ return x.active; });
   var dept = S.pickDept || (e ? (e.dept||"（所属なし）") : "");
   var who='<div class="form-grid"><div class="field"><label for="scanDept">① 部を選ぶ</label>'+
@@ -545,10 +566,13 @@ function viewMine(){
       '<div class="copy-head"><span class="spine">'+esc(l.bookId)+'</span><b>'+esc(bookTitle(l.bookId))+'</b></div>'+
       '<div class="due"><span class="muted small">返却期限</span><span class="d">'+jp(l.dueDate)+'</span>'+lt+'</div>'+
       '<p class="small muted">貸出番号 <span class="mono">'+esc(l.loanNo)+'</span>　貸出日 '+js(l.loanDate)+'<br>返却先：'+esc(b.location||"—")+'<br>'+extNote+'</p>'+
+      (undoLeft(l)?'<p class="small"><button class="btn sm" data-act="selfUndo" data-id="'+esc(l.loanNo)+'" type="button">間違えて借りた：取り消す</button> <span class="muted">あと'+undoLeft(l)+'分</span></p>':"")+
       '<p class="small"><b>返すとき：</b>'+(/^郵送/.test(l.note||"")?'本を本社（総務部）へ郵送してください。届いた本のQRを総務部が読み取って返却します。':'本をKTライブラリの元の場所に戻し、<b>本のQRラベルを読み取って</b>返却します。')+'</p></article>';
   }).join(""):'<div class="empty">いま借りている本はありません。</div>';
   return '<section class="panel"><h2>'+esc(e.name)+' さんの貸出</h2><p>いま <b>'+act.length+' 冊</b> 借りています'+(pendingReqs(e.id).length?'（ほかに郵送の申請中 '+pendingReqs(e.id).length+' 冊）':'')+'。上限は '+MAX_LOANS+' 冊です。'+((MAX_LOANS-act.length-pendingReqs(e.id).length)>0?'あと '+(MAX_LOANS-act.length-pendingReqs(e.id).length)+' 冊借りられます。':'上限に達しています。')+'</p></section>'+
     (act.length?qrButton("返す本のQRラベルを読み取ると、返却の画面が開きます"):"")+'<div class="list">'+cards+'</div>'+
+    (function(){ var rr=loanArr().filter(function(l){ return l.empId===e.id && l.status==="returned" && undoLeft(l); });
+      return rr.length?'<section class="panel"><h3>直前に返却した本</h3>'+rr.map(function(l){ return '<p>'+esc(bookTitle(l.bookId))+'（<span class="mono">'+esc(l.bookId)+'</span>） <button class="btn sm" data-act="selfUndo" data-id="'+esc(l.loanNo)+'" type="button">間違えて返却した：取り消す</button> <span class="small muted">あと'+undoLeft(l)+'分</span></p>'; }).join("")+'</section>':""; })()+
     (pendingReqs(e.id).length?'<section class="panel"><h3>郵送の申請中</h3><ul class="rules">'+pendingReqs(e.id).map(function(r){ var g=groupById(r.group)||{title:r.group}; return '<li>'+esc(g.title)+'（申請番号 <span class="mono">'+esc(r.reqNo)+'</span>・'+esc(r.requestedAt.slice(0,10).replace(/-/g,"/"))+'）：本社からの発送を待っています</li>'; }).join("")+'</ul></section>':"")+
     (past.length?'<details class="panel"><summary style="cursor:pointer;font-weight:700">これまでに返却した本（'+past.length+'件）</summary><div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>管理番号</th><th>書名</th><th>貸出日</th><th>返却日</th></tr></thead><tbody>'+past.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td class="mono">'+esc(l.bookId)+'</td><td class="wrap">'+esc(bookTitle(l.bookId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.returnDate)+'</td></tr>'; }).join("")+'</tbody></table></div></details>':"");
 }
@@ -571,7 +595,7 @@ function viewRules(){
   '<li><div>送付先の拠点名などを入力して申請します。総務部の担当者にメールが届きます。</div></li>'+
   '<li><div>本社で本のQRを読み取って貸出を登録し、郵送します。「自分の貸出」に表示されます。</div></li>'+
   '<li><div>読み終わったら、返却期限までに<b>本社（総務部）へ郵送</b>で返してください。本社で届いた本のQRを読み取って返却を登録します。</div></li></ol></section>'+
-  '<section class="panel"><h3>困ったとき（総務部へ連絡）</h3><ul class="rules"><li>期限を過ぎた → すぐに返却</li><li>なくした・汚した・破いた → <b>総務部へ報告</b></li><li>間違えて登録した → <b>総務部へ連絡</b>（自分では取り消せません）</li><li>QRが読み取れない・ラベルがはがれた → 総務部へ連絡</li><li>「保存できませんでした」→ もう一度操作。続く場合は総務部へ</li></ul></section>'+
+  '<section class="panel"><h3>困ったとき</h3><ul class="rules"><li>期限を過ぎた → すぐに返却</li><li>なくした・汚した・破いた → <b>総務部へ報告</b></li><li>間違えて借りた・返した → 登録から<b>'+S.undoMin+'分以内</b>なら、登録完了の画面か「自分の貸出」の「<b>取り消す</b>」で自分で取り消せます。過ぎた場合は<b>総務部へ連絡</b></li><li>QRが読み取れない・ラベルがはがれた → 総務部へ連絡</li><li>「保存できませんでした」→ もう一度操作。続く場合は総務部へ</li></ul></section>'+
   '<div class="notice plain"><b>総務部の管理画面について</b><span>「総務部」タブは管理者パスワードで保護されています。</span></div>';
 }
 
@@ -608,7 +632,7 @@ function aScan(){
     (st.loan?'<dt>借りている人</dt><dd><b>'+esc(e?e.name:st.loan.empId)+'</b>（'+esc(e?e.dept:"")+'・'+esc(st.loan.empId)+'）</dd><dt>貸出日／返却期限</dt><dd>'+js(st.loan.loanDate)+' ／ '+js(st.loan.dueDate)+(isOver(st.loan)?' <span class="pill st-bad">'+diffDays(st.loan.dueDate,S.today)+'日超過</span>':"")+'</dd><dt>延長</dt><dd>'+st.loan.extensions+' 回</dd>':"")+
     (b.suspended?'<dt>停止理由</dt><dd>'+esc(b.suspendReason||"—")+'</dd>':"")+'</dl>'+
     '<div class="btn-row">'+(st.loan?'<button class="btn primary" data-act="adminReturn" data-id="'+esc(st.loan.loanNo)+'" type="button">返却処理</button><button class="btn" data-act="adminCancel" data-id="'+esc(st.loan.loanNo)+'" type="button">貸出を取消</button>':"")+
-    '<button class="btn" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button>'+(st.preparing?'<button class="btn primary" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="0" type="button">準備完了にする</button>':(!b.suspended&&!st.loan?'<button class="btn" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="1" type="button">準備中にする</button>':""))+(st.preparing?"":'<button class="btn" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button>')+'<button class="btn" data-act="asUser" data-id="'+esc(b.id)+'" type="button">利用者として借りる・返す</button></div>'+
+    '<button class="btn" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button>'+(st.preparing?'<button class="btn primary" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="0" type="button">準備完了にする</button>':(!st.loan?'<button class="btn" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="1" type="button">準備中にする</button>':""))+(st.preparing?"":'<button class="btn" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button>')+'<button class="btn" data-act="asUser" data-id="'+esc(b.id)+'" type="button">利用者として借りる・返す</button></div>'+
     (hist.length?'<h3>この本の最近の貸出</h3><div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>氏名</th><th>貸出日</th><th>返却日</th><th>状態</th></tr></thead><tbody>'+hist.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td>'+esc(empName(l.empId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.returnDate)+'</td><td>'+statusPill(l)+'</td></tr>'; }).join("")+'</tbody></table></div>':"")+'</section>'+hint;
 }
 function statusPill(l){ return l.status==="returned"?'<span class="pill st-ok">返却済み</span>':l.status==="cancelled"?'<span class="pill st-off">取消</span>':isOver(l)?'<span class="pill st-bad">期限超過</span>':'<span class="pill st-busy">貸出中</span>'; }
@@ -687,8 +711,8 @@ function aBooks(){
   return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>書籍台帳（'+gs.length+'タイトル・'+bookArr().length+'冊）</h2><button class="btn sm primary" data-act="bookNew" type="button">＋ 新しい書籍を登録</button></div>'+
   '<p class="small muted">同じ本が複数あるときは「＋1冊追加」で複本を登録します。管理番号は「書籍コード-冊番号」（例：BK-005-2）で、1冊ごとにQRラベルを貼ります。'+(bookArr().length>=30?'<br><b style="color:var(--busy)">所蔵が30冊に達しました（当初想定は30冊未満）。</b>':"")+'</p>'+
   '<div class="tbl-wrap"><table><thead><tr><th>管理番号</th><th>保管場所</th><th>登録日</th><th>状況</th><th></th></tr></thead><tbody>'+
-  gs.map(function(g){ return '<tr class="grp"><td colspan="4" class="wrap"><span class="mono">'+esc(g.id)+'</span>　'+esc(g.title)+chip(g)+'<br><span class="small muted" style="font-weight:400">'+esc(g.author)+'／'+esc(g.category)+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="addCopy" data-id="'+esc(g.copies[0].id)+'" type="button">＋1冊追加</button><button class="btn sm" data-act="introEdit" data-id="'+esc(g.id)+'" type="button">紹介文</button>'+(g.copies.length>1&&g.copies.some(function(c){ return copyStatus(c).preparing; })?'<button class="btn sm primary" data-act="prepGroup" data-id="'+esc(g.id)+'" data-to="0" type="button">全冊を準備完了</button>':"")+(g.copies.length>1&&g.copies.some(function(c){ return !c.suspended && !copyStatus(c).loan; })?'<button class="btn sm" data-act="prepGroup" data-id="'+esc(g.id)+'" data-to="1" type="button">全冊を準備中</button>':"")+'</div></td></tr>'+
-    g.copies.map(function(b){ var st=copyStatus(b); return '<tr><td><span class="spine">'+esc(b.id)+'</span></td><td>'+esc(b.location)+'</td><td>'+js(b.registeredDate)+'</td><td><span class="pill '+st.cls+'">'+st.label+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button>'+(st.preparing?'<button class="btn sm primary" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="0" type="button">準備完了にする</button>':(!b.suspended&&!st.loan?'<button class="btn sm" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="1" type="button">準備中にする</button>':""))+(st.preparing?"":'<button class="btn sm" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button>')+'</div></td></tr>'; }).join(""); }).join("")+
+  gs.map(function(g){ return '<tr class="grp"><td colspan="4" class="wrap"><span class="mono">'+esc(g.id)+'</span>　'+esc(g.title)+chip(g)+'<br><span class="small muted" style="font-weight:400">'+esc(g.author)+'／'+esc(g.category)+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="addCopy" data-id="'+esc(g.copies[0].id)+'" type="button">＋1冊追加</button><button class="btn sm" data-act="introEdit" data-id="'+esc(g.id)+'" type="button">紹介文</button>'+(g.copies.length>1&&g.copies.some(function(c){ return copyStatus(c).preparing; })?'<button class="btn sm primary" data-act="prepGroup" data-id="'+esc(g.id)+'" data-to="0" type="button">全冊を準備完了</button>':"")+(g.copies.length>1&&g.copies.some(function(c){ var x=copyStatus(c); return !x.preparing && !x.loan; })?'<button class="btn sm" data-act="prepGroup" data-id="'+esc(g.id)+'" data-to="1" type="button">全冊を準備中</button>':"")+'</div></td></tr>'+
+    g.copies.map(function(b){ var st=copyStatus(b); return '<tr><td><span class="spine">'+esc(b.id)+'</span></td><td>'+esc(b.location)+'</td><td>'+js(b.registeredDate)+'</td><td><span class="pill '+st.cls+'">'+st.label+'</span></td><td><div class="btn-row nowrap"><button class="btn sm" data-act="bookEdit" data-id="'+esc(b.id)+'" type="button">編集</button>'+(st.preparing?'<button class="btn sm primary" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="0" type="button">準備完了にする</button>':(!st.loan?'<button class="btn sm" data-act="prepSet" data-id="'+esc(b.id)+'" data-to="1" type="button">準備中にする</button>':""))+(st.preparing?"":'<button class="btn sm" data-act="bookToggle" data-id="'+esc(b.id)+'" type="button">'+(b.suspended?"停止を解除":"利用停止")+'</button>')+'</div></td></tr>'; }).join(""); }).join("")+
   '</tbody></table></div></section>';
 }
 function aEmps(){
@@ -955,7 +979,7 @@ function prepModal(ids, to){
   openModal('<h2>'+(to?"準備中にしますか？":"準備完了にしますか？")+'</h2>'+
     '<dl class="confirm-box"><dt>本</dt><dd>'+esc(title)+'</dd><dt>対象</dt><dd>'+bs.map(function(b){ return '<span class="spine">'+esc(b.id)+'</span>'; }).join(" ")+'</dd></dl>'+
     (to?'<p class="small">現物がまだ本社にない状態にします。従業員の画面に「準備中（入荷待ち）」と表示され、<b>借りる・郵送の申請ができなくなります</b>。</p>':
-        '<p class="small">本が本社に届いた状態にします。<b>借りる・郵送の申請ができるようになります</b>。QRラベルが貼ってあるか確認してください。</p>')+okRow(to?"準備中にする":"準備完了にする"),
+        '<p class="small">本が本社に届いた状態にします。<b>借りる・郵送の申請ができるようになります</b>（業界誌など元が「閲覧のみ」の本は、閲覧のみに戻ります）。QRラベルが貼ってあるか確認してください。</p>')+okRow(to?"準備中にする":"準備完了にする"),
   function(){ $("mOk").addEventListener("click",function(){ runSave(this,"setPreparing",{token:S.token,bookIds:ids,preparing:!!to},function(r){ return (to?"準備中にしました：":"準備完了にしました（貸出できます）：")+r.changed.join("、"); }); }); });
 }
 function bookToggle(id){
@@ -1023,11 +1047,12 @@ document.addEventListener("click",function(ev){
     shipScan:function(){ var no=id; openScanner({title:"発送する本のQRを読み取る",help:"郵送する本のQRラベルを枠の中に写してください。",manual:true,onCode:function(code){ shipScanned(no,code); }}); },
     reqCancel:function(){ reqCancelModal(id); },
     introEdit:function(){ introForm(id); },
+    selfUndo:function(){ undoModal(id); },
     prepSet:function(){ prepModal([id], t.getAttribute("data-to")==="1"); },
-    prepGroup:function(){ var to=t.getAttribute("data-to")==="1"; var ids=(groupById(id)||{copies:[]}).copies.filter(function(c){ var st=copyStatus(c); return to ? (!c.suspended && !st.loan) : st.preparing; }).map(function(c){ return c.id; }); prepModal(ids, to); },
+    prepGroup:function(){ var to=t.getAttribute("data-to")==="1"; var ids=(groupById(id)||{copies:[]}).copies.filter(function(c){ var st=copyStatus(c); return to ? (!st.preparing && !st.loan) : st.preparing; }).map(function(c){ return c.id; }); prepModal(ids, to); },
     copyUrl:function(){ var u=$("introUrl"); try{ navigator.clipboard.writeText(u.value).then(function(){ toast("リンクをコピーしました"); },function(){ u.select(); toast("リンクを選択しました。コピーしてください"); }); }catch(x){ u.select(); } },
-    inlineBorrow:function(){ var e=curEmp(), b=S.books[id]; inlineSave(t,"borrow",{empId:e.id,bookId:id},function(r){ return {title:"借りました", text:"「"+b.title+"」（"+id+"）を "+e.name+" さんの名前で登録しました。返却期限は "+jp(r.loan.dueDate)+" です。"}; }); },
-    inlineReturn:function(){ var l=S.loans[id], b=S.books[l.bookId]||{}; inlineSave(t,"returnLoan",{loanNo:id},function(){ return {title:"返却しました", text:"「"+(b.title||l.bookId)+"」の返却を登録しました。"}; }); },
+    inlineBorrow:function(){ var e=curEmp(), b=S.books[id]; inlineSave(t,"borrow",{empId:e.id,bookId:id},function(r){ return {title:"借りました", loanNo:r.loan.loanNo, text:"「"+b.title+"」（"+id+"）を "+e.name+" さんの名前で登録しました。返却期限は "+jp(r.loan.dueDate)+" です。"}; }); },
+    inlineReturn:function(){ var l=S.loans[id], b=S.books[l.bookId]||{}; inlineSave(t,"returnLoan",{loanNo:id},function(){ return {title:"返却しました", loanNo:id, text:"「"+(b.title||l.bookId)+"」の返却を登録しました。"}; }); },
     inlineExtend:function(){ var l=S.loans[id], b=S.books[l.bookId]||{}; inlineSave(t,"extend",{loanNo:id},function(r){ return {title:"延長しました", text:"「"+(b.title||l.bookId)+"」の新しい返却期限は "+jp(r.dueDate)+" です。延長は1回までです。"}; }); },
     adminReturn:function(){ returnModal(id,true); }, adminCancel:function(){ cancelModal(id); },
     bookNew:function(){ bookForm(null); }, bookEdit:function(){ bookForm(id); }, bookToggle:function(){ bookToggle(id); }, addCopy:function(){ addCopyModal(id); },

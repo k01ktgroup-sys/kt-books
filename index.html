@@ -158,6 +158,10 @@ ul.rules{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
 .check input{width:24px;height:24px;flex:none;margin-top:2px}
 .emp-pick{display:grid;gap:10px}
 .dept-pick{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.name-pick{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.dept-checks{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.dept-checks label{display:flex;gap:8px;align-items:center;background:var(--surface-2);padding:8px 10px;border-radius:8px;cursor:pointer}
+.dept-checks input{width:20px;height:20px;flex:none}
 .emp-pick button{min-height:62px;text-align:left;padding:10px 16px;border-radius:var(--r);border:1px solid var(--line);background:var(--surface);cursor:pointer;display:flex;flex-direction:column}
 .emp-pick button[disabled]{opacity:.5;cursor:not-allowed}
 .emp-pick button[aria-pressed="true"]{border:2px solid var(--accent);background:var(--accent-soft)}
@@ -267,7 +271,7 @@ function applyState(st){
   S.emps={}; st.emps.forEach(function(e){ S.emps[e.id]=e; });
   S.loans={}; st.loans.forEach(function(l){ S.loans[l.loanNo]=l; });
   S.intros={}; (st.intros||[]).forEach(function(x){ S.intros[x.group]=x; });
-  S.mailReqs=st.mailReqs||[]; S.mailExtraDays=st.mailExtraDays||7; S.undoMin=st.selfUndoMin||10;
+  S.mailReqs=st.mailReqs||[]; S.mailExtraDays=st.mailExtraDays||7; S.undoMin=st.selfUndoMin||10; S.deptOrder=st.deptOrder||[];
   S.loaded=true; S.loadErr=null;
 }
 function refresh(){
@@ -294,8 +298,24 @@ function activeOfBook(id){ return loanArr().filter(function(l){ return l.status=
 function activeOfEmp(id){ return loanArr().filter(function(l){ return l.status==="active" && l.empId===id; }).sort(function(a,b){ return a.dueDate<b.dueDate?-1:1; }); }
 function isOver(l){ return l.status==="active" && S.today>l.dueDate; }
 function activeEmps(){ return empArr().filter(function(x){ return x.active; }); }
-function deptList(){ var seen={}, out=[]; activeEmps().forEach(function(x){ var d=x.dept||"（所属なし）"; if(!seen[d]){ seen[d]=1; out.push(d); } }); return out.sort(function(a,b){ return a.localeCompare(b,"ja"); }); }
-function empsInDept(d){ return activeEmps().filter(function(x){ return (x.dept||"（所属なし）")===d; }).sort(function(a,b){ return a.id<b.id?-1:a.id>b.id?1:0; }); }
+/* 所属は兼務のとき「、」区切りで複数。部は組織図の順（S.deptOrder）に並べ、部の中は本部の人 → 事業所ごとの順に並べる */
+var NO_DEPT="（所属なし）";
+function deptsOf(x){ var a=String(x.dept||"").split(/[、,，\/／]/).map(function(d){ return d.trim(); }).filter(Boolean); return a.length?a:[NO_DEPT]; }
+function inDept(x,d){ return deptsOf(x).indexOf(d)>=0; }
+function deptRank(d){ var i=(S.deptOrder||[]).indexOf(d); return i<0?999:i; }
+function sortDepts(a){ return a.sort(function(x,y){ var rx=deptRank(x), ry=deptRank(y); return rx!==ry?rx-ry:x.localeCompare(y,"ja"); }); }
+function deptList(all){ var seen={}, out=[]; (all?empArr():activeEmps()).forEach(function(x){ deptsOf(x).forEach(function(d){ if(!seen[d]){ seen[d]=1; out.push(d); } }); }); return sortDepts(out); }
+function byId(a,b){ return a.id<b.id?-1:a.id>b.id?1:0; }
+function sortInDept(list,d){
+  var first={}; list.slice().sort(byId).forEach(function(x){ var o=x.office||""; if(!(o in first)) first[o]=x.id; });
+  return list.sort(function(a,b){ var oa=a.office||"", ob=b.office||"";
+    if(!oa!==!ob) return oa?1:-1;                                        // 本部の人（事業所なし）が先
+    if(oa!==ob) return first[oa]<first[ob]?-1:1;                         // 事業所は登録順
+    if(!oa){ var pa=deptsOf(a)[0]===d?0:1, pb=deptsOf(b)[0]===d?0:1; if(pa!==pb) return pa-pb; } // 兼務の人は後
+    return byId(a,b); });
+}
+function empsInDept(d){ return sortInDept(activeEmps().filter(function(x){ return inDept(x,d); }),d); }
+function empSub(x){ return x.office ? x.office : (deptsOf(x).length>1 ? deptsOf(x).join("・") : "本部"); }
 function curEmp(){ var e=S.empId&&S.emps[S.empId]; return e && e.active ? e : null; }
 function empName(id){ var e=S.emps[id]; return e?e.name:id; }
 function bookTitle(id){ var b=S.books[id]; return b?b.title:id; }
@@ -514,11 +534,11 @@ function viewScanned(){
     '<div class="btn-row" style="justify-content:center"><button class="btn green" data-go="mine" type="button">自分の貸出を見る</button><button class="btn" data-act="scanUser" type="button">続けて別の本を読み取る</button></div>'+
     (S.scanDone.loanNo?'<p class="small muted">間違えた場合は、'+S.undoMin+'分以内なら <button class="btn sm" data-act="selfUndo" data-id="'+esc(S.scanDone.loanNo)+'" type="button">この登録を取り消す</button></p>':"")+'</section>';
   var st=copyStatus(b), e=curEmp(), emps=empArr().filter(function(x){ return x.active; });
-  var dept = S.pickDept || (e ? (e.dept||"（所属なし）") : "");
+  var dept = S.pickDept || (e ? deptsOf(e)[0] : "");
   var who='<div class="form-grid"><div class="field"><label for="scanDept">① 部を選ぶ</label>'+
     '<select id="scanDept"><option value="">― 部を選んでください ―</option>'+deptList().map(function(d){ return '<option'+(d===dept?" selected":"")+'>'+esc(d)+'</option>'; }).join("")+'</select></div>'+
     '<div class="field"><label for="scanEmp">② 名前を選ぶ</label>'+
-    '<select id="scanEmp"'+(dept?"":" disabled")+'><option value="">'+(dept?"― 名前を選んでください ―":"― 先に部を選んでください ―")+'</option>'+(dept?empsInDept(dept).map(function(x){ return '<option value="'+esc(x.id)+'"'+(e&&e.id===x.id?" selected":"")+'>'+esc(x.name)+'</option>'; }).join(""):"")+'</select></div></div>'+
+    '<select id="scanEmp"'+(dept?"":" disabled")+'><option value="">'+(dept?"― 名前を選んでください ―":"― 先に部を選んでください ―")+'</option>'+(dept?empsInDept(dept).map(function(x){ return '<option value="'+esc(x.id)+'"'+(e&&e.id===x.id?" selected":"")+'>'+esc(x.name)+'（'+esc(empSub(x))+'）</option>'; }).join(""):"")+'</select></div></div>'+
     '<div class="notice warn"><b>必ずご自身の名前を選んでください。他の人の名前で借りたり返したりしないでください。</b></div>';
   if(e) who=whoLine(e);
   var head='<section class="panel scan-book"><div class="copy-head"><span class="spine">'+esc(b.id)+'</span><span class="pill '+st.cls+'">'+st.label+'</span>'+chip(b)+'</div>'+
@@ -723,11 +743,24 @@ function aBooks(){
   '</tbody></table></div></section>';
 }
 function aEmps(){
-  return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>従業員一覧（'+empArr().length+'名）</h2><button class="btn sm primary" data-act="empNew" type="button">＋ 従業員を登録</button></div>'+
-  '<p class="small muted">「停止」にした従業員は名前の選択肢に表示されず、貸出できません。退職者は削除せず停止にしてください。</p>'+
-  '<div class="tbl-wrap"><table><thead><tr><th>従業員番号</th><th>氏名</th><th>所属</th><th>送付先（郵送）</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
-  empArr().map(function(e){ return '<tr><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td>'+esc(e.dept)+'</td><td class="wrap">'+(e.shipOffice?esc(e.shipOffice)+(e.shipAddress?'<br><span class="small muted">'+esc(e.shipAddress)+'</span>':""):'<span class="small muted">—</span>')+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
-  '</tbody></table></div></section>';
+  var all=empArr(), q=(S.empQ||"").trim().toLowerCase(), fd=S.empDept||"";
+  var rows=all.filter(function(e){
+    if(fd && !inDept(e,fd)) return false;
+    if(q && (e.id+" "+e.name+" "+e.dept+" "+(e.office||"")+" "+(e.shipOffice||"")).toLowerCase().indexOf(q)<0) return false;
+    return true; });
+  // 利用可能な人 → 停止中の人。その中は部（組織図の順）→ 本部の人・事業所ごと
+  rows.sort(function(a,b){ if(a.active!==b.active) return a.active?-1:1;
+    var da=deptsOf(a)[0], db=deptsOf(b)[0]; if(da!==db) return deptRank(da)-deptRank(db)||da.localeCompare(db,"ja");
+    return 0; });
+  var grouped=[], i=0; while(i<rows.length){ var j=i, d=deptsOf(rows[i])[0], act=rows[i].active; while(j<rows.length && deptsOf(rows[j])[0]===d && rows[j].active===act) j++; grouped=grouped.concat(sortInDept(rows.slice(i,j),d)); i=j; }
+  return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>従業員一覧（'+all.length+'名）</h2><button class="btn sm primary" data-act="empNew" type="button">＋ 従業員を登録</button></div>'+
+  '<p class="small muted">「停止」にした従業員は名前の選択肢に表示されず、貸出できません。退職者は削除せず停止にしてください（貸出の記録が残ります）。異動したときは「編集」で所属・事業所を変えてください。</p>'+
+  '<div class="form-grid"><div class="field"><label for="eq">氏名・事業所・従業員番号で検索</label><input type="search" id="eq" value="'+esc(S.empQ||"")+'"></div>'+
+  '<div class="field"><label for="eqDept">部で絞り込む</label><select id="eqDept"><option value="">すべての部</option>'+deptList(true).map(function(d){ return '<option'+(d===fd?" selected":"")+'>'+esc(d)+'</option>'; }).join("")+'</select></div></div>'+
+  ((q||fd)?'<p class="small">'+grouped.length+' 名を表示しています</p>':"")+
+  (grouped.length?'<div class="tbl-wrap"><table><thead><tr><th>従業員番号</th><th>氏名</th><th>所属</th><th>事業所</th><th>送付先（郵送）</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
+  grouped.map(function(e){ return '<tr><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td>'+esc(deptsOf(e).join("・"))+'</td><td class="wrap">'+(e.office?esc(e.office):'<span class="small muted">本部</span>')+'</td><td class="wrap">'+(e.shipOffice?esc(e.shipOffice)+(e.shipAddress?'<br><span class="small muted">'+esc(e.shipAddress)+'</span>':""):'<span class="small muted">—</span>')+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
+  '</tbody></table></div>':'<div class="empty">条件に合う従業員はいません。</div>')+'</section>';
 }
 function aLabels(){
   var bs=bookArr(), n=bs.filter(function(b){ return S.labelSel[b.id]; }).length;
@@ -877,13 +910,13 @@ function invScanned(id){
 /* ---------- dialogs ---------- */
 function pickEmpModal(dept){
   var depts=deptList(), e=curEmp();
-  if(dept===undefined) dept = e ? (e.dept||"（所属なし）") : (depts.length===1 ? depts[0] : null);
+  if(dept===undefined) dept = e ? deptsOf(e)[0] : (depts.length===1 ? depts[0] : null);
   var note='<div class="notice warn"><b>必ずご自身の名前を選んでください。他の人の名前で借りたり返したりしないでください。</b></div>';
   var body;
   if(!depts.length) body='<div class="empty">利用できる人が登録されていません。総務部へ連絡してください。</div>';
   else if(!dept) body='<h3>① 部を選んでください</h3><div class="emp-pick dept-pick">'+depts.map(function(d){ return '<button type="button" data-dept="'+esc(d)+'"><span class="n">'+esc(d)+'</span><span class="d">'+empsInDept(d).length+' 人</span></button>'; }).join("")+'</div>';
   else body='<div class="btn-row" style="align-items:center;justify-content:space-between"><h3>② '+esc(dept)+' の方：名前を選んでください</h3>'+(depts.length>1?'<button type="button" class="btn sm" data-dept="">← 部を選び直す</button>':"")+'</div>'+
-    '<div class="emp-pick">'+empsInDept(dept).map(function(x){ return '<button type="button" data-pick="'+esc(x.id)+'" aria-pressed="'+(S.empId===x.id)+'"><span class="n">'+esc(x.name)+chip(x)+'</span><span class="d">'+esc(x.dept)+'</span></button>'; }).join("")+'</div>';
+    '<div class="emp-pick name-pick">'+empsInDept(dept).map(function(x){ return '<button type="button" data-pick="'+esc(x.id)+'" aria-pressed="'+(S.empId===x.id)+'"><span class="n">'+esc(x.name)+chip(x)+'</span><span class="d">'+esc(empSub(x))+'</span></button>'; }).join("")+'</div>';
   openModal('<h2>自分の名前を選んでください</h2>'+note+body+
     '<p class="small muted">選んだ名前はこの端末に記憶されます。共用の端末では使い終わったら選び直してください。</p><div class="btn-row"><button class="btn" data-close type="button">閉じる</button></div>',
   function(){
@@ -999,15 +1032,27 @@ function bookToggle(id){
   function(){ $("mOk").addEventListener("click",function(){ runSave(this,"setBookSuspended",{token:S.token,bookId:id,suspended:to,reason:to?$("tReason").value.trim():""},(to?"利用停止にしました：":prep?"準備完了にしました（貸出できます）：":"利用停止を解除しました：")+id); }); });
 }
 function empForm(id){
-  var e=id?S.emps[id]:{id:"",name:"",dept:"",active:true};
+  var e=id?S.emps[id]:{id:"",name:"",dept:"",office:"",active:true};
+  var mine=id?deptsOf(e).filter(function(d){ return d!==NO_DEPT; }):[];
+  var known=sortDepts((S.deptOrder||[]).concat(deptList(true)).filter(function(d,i,a){ return d!==NO_DEPT && a.indexOf(d)===i; }));
+  var other=mine.filter(function(d){ return known.indexOf(d)<0; });
+  var offices={}; empArr().forEach(function(x){ if(x.office && !offices[x.office]) offices[x.office]=x; });
   openModal('<h2>'+(id?"従業員を編集":"従業員を登録")+'</h2><div class="form-grid">'+
     '<div class="field"><label for="eId">従業員番号'+(id?"":'<span class="small muted">（ない場合は空欄）</span>')+'</label><input type="text" id="eId" value="'+esc(e.id)+'"'+(id?" readonly":' placeholder="空欄なら自動（A0001〜）"')+'>'+(id?"":'<span class="hint">空欄のときは A0001 から順に自動で番号を付けます</span>')+'</div>'+
     '<div class="field"><label for="eName">氏名</label><input type="text" id="eName" value="'+esc(e.name)+'"></div>'+
-    '<div class="field full"><label for="eDept">所属</label><input type="text" id="eDept" list="deptList" value="'+esc(e.dept)+'"><datalist id="deptList">'+deptList().map(function(d){ return '<option value="'+esc(d)+'">'; }).join("")+'</datalist><span class="hint">一覧から選ぶと表記がそろいます（部の選択画面に使われます）</span></div>'+
+    '<div class="field full"><label for="eD0">所属（部）<span class="small muted">　兼務の人は複数選べます</span></label><div class="dept-checks">'+known.map(function(d,i){ return '<label for="eD'+i+'"><input type="checkbox" id="eD'+i+'" data-dept-check="'+esc(d)+'"'+(mine.indexOf(d)>=0?" checked":"")+'>'+esc(d)+'</label>'; }).join("")+'</div>'+
+    '<input type="text" id="eDeptOther" style="margin-top:8px" placeholder="一覧にない部のときだけ入力（例：〇〇部）" value="'+esc(other.join("、"))+'"></div>'+
+    '<div class="field full"><label for="eOffice">事業所<span class="small muted">（本部の人は空欄）</span></label><input type="text" id="eOffice" list="officeList" value="'+esc(e.office||"")+'"><datalist id="officeList">'+Object.keys(offices).sort(function(a,b){ return a.localeCompare(b,"ja"); }).map(function(o){ return '<option value="'+esc(o)+'">'; }).join("")+'</datalist><span class="hint">一覧から選ぶと表記がそろいます。送付先が空欄なら、同じ事業所の人の送付先が自動で入ります</span></div>'+
     '<div class="field full"><label for="eShip">送付先（拠点名）<span class="small muted">（郵送で借りる拠点の方は入力）</span></label><input type="text" id="eShip" placeholder="例：福岡事業所" value="'+esc(e.shipOffice||"")+'"></div>'+
     '<div class="field full"><label for="eShipAddr">送付先の住所・連絡先<span class="small muted">（社内便の場合は不要）</span></label><input type="text" id="eShipAddr" placeholder="例：福岡市博多区○○1-2-3　TEL 092-000-0000" value="'+esc(e.shipAddress||"")+'"></div>'+
     '<label class="check full" for="eActive"><input type="checkbox" id="eActive"'+(e.active?" checked":"")+'><span><b>利用可能</b>（外すと停止）</span></label></div>'+okRow("保存する"),
-  function(){ $("mOk").addEventListener("click",function(){ runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:$("eDept").value,active:$("eActive").checked,shipOffice:$("eShip").value,shipAddress:$("eShipAddr").value}},(function(nm){ return function(r){ return "従業員を保存しました："+nm+"（従業員番号 "+((r&&r.id)||"")+"）"; }; })($("eName").value.trim())); }); });
+  function(){
+    $("eOffice").addEventListener("change",function(){ var src=offices[this.value.trim()];
+      if(src && !$("eShip").value.trim() && !$("eShipAddr").value.trim()){ $("eShip").value=src.shipOffice||""; $("eShipAddr").value=src.shipAddress||""; } });
+    $("mOk").addEventListener("click",function(){
+    var depts=[].slice.call($("modalRoot").querySelectorAll("[data-dept-check]")).filter(function(c){ return c.checked; }).map(function(c){ return c.getAttribute("data-dept-check"); });
+    if($("eDeptOther").value.trim()) depts.push($("eDeptOther").value.trim());
+    runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:depts.join("、"),office:$("eOffice").value,active:$("eActive").checked,shipOffice:$("eShip").value,shipAddress:$("eShipAddr").value}},(function(nm){ return function(r){ return "従業員を保存しました："+nm+"（従業員番号 "+((r&&r.id)||"")+"）"; }; })($("eName").value.trim())); }); });
 }
 function empToggle(id){
   var e=S.emps[id], to=!e.active, n=activeOfEmp(id).length;
@@ -1094,10 +1139,12 @@ document.addEventListener("submit",function(ev){
 document.addEventListener("input",function(ev){
   if(ev.target.id==="q"){ S.q=ev.target.value; render(); }
   else if(ev.target.id==="hq"){ S.histQ=ev.target.value; render(); }
+  else if(ev.target.id==="eq"){ S.empQ=ev.target.value; render(); }
 });
 document.addEventListener("change",function(ev){
   if(ev.target.id==="cat"){ S.cat=ev.target.value; render(); }
-  else if(ev.target.id==="scanDept"){ S.pickDept=ev.target.value||null; var ce=curEmp(); if(ce && (ce.dept||"（所属なし）")!==S.pickDept){ S.empId=null; try{ localStorage.removeItem(LS_EMP); }catch(x){} } render(); }
+  else if(ev.target.id==="eqDept"){ S.empDept=ev.target.value; render(); }
+  else if(ev.target.id==="scanDept"){ S.pickDept=ev.target.value||null; var ce=curEmp(); if(ce && !inDept(ce,S.pickDept)){ S.empId=null; try{ localStorage.removeItem(LS_EMP); }catch(x){} } render(); }
   else if(ev.target.id==="scanEmp"){ S.empId=ev.target.value||null; try{ if(S.empId) localStorage.setItem(LS_EMP,S.empId); else localStorage.removeItem(LS_EMP); }catch(e){} render(); }
   else if(ev.target.id==="scanShelved"){ var g=$("scanGo"); if(g) g.disabled=!ev.target.checked; }
   else if(ev.target.hasAttribute&&ev.target.hasAttribute("data-label")){ var k=ev.target.getAttribute("data-label"); if(ev.target.checked) S.labelSel[k]=true; else delete S.labelSel[k]; render(); }

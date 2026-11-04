@@ -437,7 +437,7 @@ function countsHtml(g){
 function jstMs(s){ var m=/(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)/.exec(String(s||"")); return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]-9,+m[5],+m[6]):0; }
 /* minutes left to undo this person's own borrow/return; 0 = no longer possible */
 function undoLeft(l){
-  if(!l || /^郵送/.test(l.note||"")) return 0;
+  if(!l || /^(郵送|本社便)/.test(l.note||"")) return 0;
   var t = l.status==="active" ? jstMs(l.createdAt) : l.status==="returned" ? jstMs(l.updatedAt) : 0;
   if(!t) return 0;
   var left=Math.ceil(S.undoMin-(Date.now()-t)/60000);
@@ -456,7 +456,7 @@ function undoModal(no){
 function whoLine(e){
   return '<div class="who-line"><span>利用者：<b>'+esc(e.name)+'</b>（'+esc(e.dept)+'）</span><button class="btn sm" data-act="pickEmp" type="button">変更</button></div>';
 }
-function mailButton(sub, gid, disabled){ return '<button type="button" class="qr-btn mail-btn" data-act="'+(gid?"mailReq":"mailPick")+'"'+(gid?' data-id="'+esc(gid)+'"':"")+(disabled?" disabled":"")+'>'+MAIL_ICON+'<div><b>郵送で借りる（本社以外の方）</b><span>'+sub+'</span></div></button>'; }
+function mailButton(sub, gid, disabled){ return '<button type="button" class="qr-btn mail-btn" data-act="'+(gid?"mailReq":"mailPick")+'"'+(gid?' data-id="'+esc(gid)+'"':"")+(disabled?" disabled":"")+'>'+MAIL_ICON+'<div><b>本社便で借りる（本社以外の方）</b><span>'+sub+'</span></div></button>'; }
 function qrButton(sub){ return '<button type="button" class="qr-btn" data-act="scanUser">'+QR_ICON+'<div><b>QRコードで借りる・返す</b><span>'+sub+'</span></div></button>'; }
 
 /* ----- 書籍一覧 ----- */
@@ -470,7 +470,7 @@ function viewBooks(){
     if(q && (g.title+" "+g.author+" "+g.category+" "+g.id).toLowerCase().indexOf(q)<0) return false;
     return true; });
   var top = curEmp() ? "" : '<div class="notice warn"><b>はじめに、上の「名前を選ぶ」から自分の名前を選んでください。</b></div>';
-  return top + '<div class="way-grid">'+qrButton("本社の方：手に取った本のQRラベルを読み取ります")+mailButton("拠点の方：本を選んで申請すると、本社から郵送します")+'</div>' +
+  return top + '<div class="way-grid">'+qrButton("本社の方：手に取った本のQRラベルを読み取ります")+mailButton("拠点の方：本を選んで申請すると、本社便でお届けします")+'</div>' +
   '<section class="panel"><h2>本をさがす</h2>'+
   '<div class="field"><label for="q">書名・著者・分類で検索</label><input type="search" id="q" placeholder="例：マネジメント、安藤" value="'+esc(S.q)+'"></div>'+
   '<div class="field"><label for="cat">分類</label><select id="cat"><option value="">すべての分類</option>'+cats.map(function(c){return '<option'+(S.cat===c?" selected":"")+'>'+esc(c)+'</option>';}).join("")+'</select></div>'+
@@ -502,12 +502,12 @@ function viewTitle(){
   '<section class="panel"><h3>1冊ごとの状況</h3><div class="tbl-wrap"><table><thead><tr><th>管理番号</th><th>状況</th><th>返却予定など</th></tr></thead><tbody>'+
     g.copies.map(function(b){ return copyCard(b, b.id===S.copyId); }).join("")+'</tbody></table></div></section>'+
   (viewOnly ? '<div class="notice plain"><b>この本は貸出していません。本社ビル8階の書庫（KTライブラリ）で閲覧してください。</b></div>' :
-   g.copies.every(function(c){ return copyStatus(c).preparing; }) ? '<div class="notice warn"><b>この本は準備中です（本社に未入荷）。</b><span>本社に届き次第、借りる・郵送の申請ができるようになります。</span></div>' :
+   g.copies.every(function(c){ return copyStatus(c).preparing; }) ? '<div class="notice warn"><b>この本は準備中です（本社に未入荷）。</b><span>本社に届き次第、借りる・本社便の申請ができるようになります。</span></div>' :
   '<section class="panel"><h3>借りるには</h3>'+
     '<p><b>本社の方：</b>KTライブラリで本を手に取り、<b>本のQRラベルを読み取って</b>借ります。（一覧からは借りられません）</p>'+
     qrButton("手に取った本のQRラベルを読み取ります")+
-    '<p><b>本社以外（拠点）の方：</b>郵送で借りる申請ができます。申請すると総務部の担当者にメールが届き、本社から郵送します。</p>'+
-    mailButton("この本の郵送を申請します", g.id, !g.avail)+
+    '<p><b>本社以外（拠点）の方：</b>本社便で借りる申請ができます。申請すると総務部の担当者にメールが届き、本社便でお届けします。</p>'+
+    mailButton("この本を本社便で申請します", g.id, !g.avail)+
     (g.avail?"":'<p class="small muted">今は借りられる本がないため申請できません（貸出中・準備中）。</p>')+
   '</section>');
 }
@@ -604,34 +604,34 @@ function viewMine(){
       '<div class="due"><span class="muted small">返却期限</span><span class="d">'+jp(l.dueDate)+'</span>'+lt+'</div>'+
       '<p class="small muted">貸出番号 <span class="mono">'+esc(l.loanNo)+'</span>　貸出日 '+js(l.loanDate)+'<br>返却先：'+esc(b.location||"—")+'<br>'+extNote+'</p>'+
       (undoLeft(l)?'<p class="small"><button class="btn sm" data-act="selfUndo" data-id="'+esc(l.loanNo)+'" type="button">間違えて借りた：取り消す</button> <span class="muted">あと'+undoLeft(l)+'分</span></p>':"")+
-      '<p class="small"><b>返すとき：</b>'+(/^郵送/.test(l.note||"")?'本を本社（総務部）へ郵送してください。届いた本のQRを総務部が読み取って返却します。':'本をKTライブラリの元の場所に戻し、<b>本のQRラベルを読み取って</b>返却します。')+'</p></article>';
+      '<p class="small"><b>返すとき：</b>'+(/^(郵送|本社便)/.test(l.note||"")?'本を本社便で本社（総務部）へ返してください。届いた本のQRを総務部が読み取って返却します。':'本をKTライブラリの元の場所に戻し、<b>本のQRラベルを読み取って</b>返却します。')+'</p></article>';
   }).join(""):'<div class="empty">いま借りている本はありません。</div>';
-  return '<section class="panel"><h2>'+esc(e.name)+' さんの貸出</h2><p>いま <b>'+act.length+' 冊</b> 借りています'+(pendingReqs(e.id).length?'（ほかに郵送の申請中 '+pendingReqs(e.id).length+' 冊）':'')+'。上限は '+MAX_LOANS+' 冊です。'+((MAX_LOANS-act.length-pendingReqs(e.id).length)>0?'あと '+(MAX_LOANS-act.length-pendingReqs(e.id).length)+' 冊借りられます。':'上限に達しています。')+'</p></section>'+
+  return '<section class="panel"><h2>'+esc(e.name)+' さんの貸出</h2><p>いま <b>'+act.length+' 冊</b> 借りています'+(pendingReqs(e.id).length?'（ほかに本社便の申請中 '+pendingReqs(e.id).length+' 冊）':'')+'。上限は '+MAX_LOANS+' 冊です。'+((MAX_LOANS-act.length-pendingReqs(e.id).length)>0?'あと '+(MAX_LOANS-act.length-pendingReqs(e.id).length)+' 冊借りられます。':'上限に達しています。')+'</p></section>'+
     (act.length?qrButton("返す本のQRラベルを読み取ると、返却の画面が開きます"):"")+'<div class="list">'+cards+'</div>'+
     (function(){ var rr=loanArr().filter(function(l){ return l.empId===e.id && l.status==="returned" && undoLeft(l); });
       return rr.length?'<section class="panel"><h3>直前に返却した本</h3>'+rr.map(function(l){ return '<p>'+esc(bookTitle(l.bookId))+'（<span class="mono">'+esc(l.bookId)+'</span>） <button class="btn sm" data-act="selfUndo" data-id="'+esc(l.loanNo)+'" type="button">間違えて返却した：取り消す</button> <span class="small muted">あと'+undoLeft(l)+'分</span></p>'; }).join("")+'</section>':""; })()+
-    (pendingReqs(e.id).length?'<section class="panel"><h3>郵送の申請中</h3><ul class="rules">'+pendingReqs(e.id).map(function(r){ var g=groupById(r.group)||{title:r.group}; return '<li>'+esc(g.title)+'（申請番号 <span class="mono">'+esc(r.reqNo)+'</span>・'+esc(r.requestedAt.slice(0,10).replace(/-/g,"/"))+'）：本社からの発送を待っています</li>'; }).join("")+'</ul></section>':"")+
+    (pendingReqs(e.id).length?'<section class="panel"><h3>本社便の申請中</h3><ul class="rules">'+pendingReqs(e.id).map(function(r){ var g=groupById(r.group)||{title:r.group}; return '<li>'+esc(g.title)+'（申請番号 <span class="mono">'+esc(r.reqNo)+'</span>・'+esc(r.requestedAt.slice(0,10).replace(/-/g,"/"))+'）：本社からの発送を待っています</li>'; }).join("")+'</ul></section>':"")+
     (past.length?'<details class="panel"><summary style="cursor:pointer;font-weight:700">これまでに返却した本（'+past.length+'件）</summary><div class="tbl-wrap"><table><thead><tr><th>貸出番号</th><th>管理番号</th><th>書名</th><th>貸出日</th><th>返却日</th></tr></thead><tbody>'+past.map(function(l){ return '<tr><td class="mono">'+esc(l.loanNo)+'</td><td class="mono">'+esc(l.bookId)+'</td><td class="wrap">'+esc(bookTitle(l.bookId))+'</td><td>'+js(l.loanDate)+'</td><td>'+js(l.returnDate)+'</td></tr>'; }).join("")+'</tbody></table></div></details>':"");
 }
 
 /* ----- ルール（「共通書籍の活用について」に基づく） ----- */
 function viewRules(){
   return '<section class="panel"><h2>KTライブラリとは</h2>'+
-  '<p>コア人材の成長に役立つ書籍を会社が選定し、閲読をすすめる制度です。書籍は<b>本社ビル8階のKTライブラリ</b>に置いています。コア人材は自由に閲覧でき、<b>連続14日間まで</b>借りることができます。本社以外（拠点）の方は、郵送で借りる申請ができます。</p>'+
+  '<p>コア人材の成長に役立つ書籍を会社が選定し、閲読をすすめる制度です。書籍は<b>本社ビル8階のKTライブラリ</b>に置いています。コア人材は自由に閲覧でき、<b>連続14日間まで</b>借りることができます。本社以外（拠点）の方は、本社便で借りる申請ができます。</p>'+
   '<div class="grid2"><div class="notice info"><b>目的・期待される効果</b><span>① 生産性の向上：コア人材の成長促進（人格形成、ビジネススキル・テクニックの習得）、社内コミュニケーションの円滑化（共通言語・共通認識の形成）</span><span>② 教育コストの抑制</span></div>'+
   '<div class="notice warn"><b>課題図書</b><span>KTライブラリの書籍のうち、上長が部下（コア人材に限る）に読了を求めるものです。個人の成長と、組織の共通言語・共通認識づくりが目的です。</span><span><b>『リーダーの仮面』は全管理職の課題図書です。</b></span></div></div></section>'+
-  '<div class="grid2"><section class="panel"><h3>貸出ルール</h3><ul class="rules"><li>利用できるのは<b>コア人材</b>です</li><li>貸出は<b>連続14日間まで</b>（延長はありません）。郵送の場合は<b>発送日から'+(LOAN_DAYS+(S.mailExtraDays||7))+'日間</b>です</li><li>1人<b>'+MAX_LOANS+'冊まで</b>（郵送の申請中を含みます）</li><li>借りる・返すは、<b>本のQRラベルを読み取って</b>行います（本が手元にないときは操作できません。郵送の場合は、発送と返却のときに本社でQRを読み取ります）</li><li>業界誌（高齢者住宅新聞・シルバー新報）は貸出していません。本社ビル8階の書庫（KTライブラリ）で閲覧してください</li><li>「準備中」の本は、本社に届くまで借りる・郵送の申請はできません</li><li><b>必ずご自身の名前を選んでください。他の人の名前で借りたり返したりしないでください。</b></li></ul></section>'+
+  '<div class="grid2"><section class="panel"><h3>貸出ルール</h3><ul class="rules"><li>利用できるのは<b>コア人材</b>です</li><li>貸出は<b>連続14日間まで</b>（延長はありません）。本社便の場合は<b>発送日から'+(LOAN_DAYS+(S.mailExtraDays||7))+'日間</b>です</li><li>1人<b>'+MAX_LOANS+'冊まで</b>（本社便の申請中を含みます）</li><li>借りる・返すは、<b>本のQRラベルを読み取って</b>行います（本が手元にないときは操作できません。本社便の場合は、発送と返却のときに本社でQRを読み取ります）</li><li>業界誌（高齢者住宅新聞・シルバー新報）は貸出していません。本社ビル8階の書庫（KTライブラリ）で閲覧してください</li><li>「準備中」の本は、本社に届くまで借りる・本社便の申請はできません</li><li><b>必ずご自身の名前を選んでください。他の人の名前で借りたり返したりしないでください。</b></li></ul></section>'+
   '<section class="panel"><h3>書籍の選定と管理</h3><ul class="rules"><li><b>選定</b>：社長（読みたい本・おすすめの本は、<b>上長を通して</b>誰でも提案できます）</li><li><b>発注・貸出管理</b>：総務部</li><li>棚卸しは3か月に1回、総務部が行います</li></ul></section></div>'+
   '<section class="panel"><h2>本社での借り方・返し方</h2><ol class="steps">'+
   '<li><div>KTライブラリで本を手に取り、<b>本のQRラベル</b>をスマートフォンのカメラ（またはこの画面の「QRコードで借りる・返す」）で読み取ります。</div></li>'+
   '<li><div>開いた画面で、利用者が自分になっているか確認します（初めてのときは部と名前を選びます）。</div></li>'+
   '<li><div><b>借りるとき</b>：返却期限を確認して「<b>この内容で借りる</b>」を押します。</div></li>'+
   '<li><div><b>返すとき</b>：本を元の場所に戻し、もう一度QRラベルを読み取って「書棚へ戻しました」にチェックを入れ、「<b>返却する</b>」を押します。</div></li></ol></section>'+
-  '<section class="panel"><h2>本社以外（拠点）の方：郵送で借りる</h2><ol class="steps">'+
-  '<li><div>「本をさがす」の上にある「<b>郵送で借りる（本社以外の方）</b>」を押し、借りたい本を選びます。</div></li>'+
+  '<section class="panel"><h2>本社以外（拠点）の方：本社便で借りる</h2><ol class="steps">'+
+  '<li><div>「本をさがす」の上にある「<b>本社便で借りる（本社以外の方）</b>」を押し、借りたい本を選びます。</div></li>'+
   '<li><div>名前・本・返却期限・発送先を確認して「<b>申請する</b>」を押します。総務部の担当者にメールが届きます。<br><span class="small muted">発送先は総務部が登録します。「登録されていません」と出たら総務部へ連絡してください。</span></div></li>'+
-  '<li><div>本社で本のQRを読み取って貸出を登録し、郵送します。「自分の貸出」に表示されます。</div></li>'+
-  '<li><div>読み終わったら、返却期限までに<b>本社（総務部）へ郵送</b>で返してください。本社で届いた本のQRを読み取って返却を登録します。</div></li></ol></section>'+
+  '<li><div>本社で本のQRを読み取って貸出を登録し、本社便で送ります。「自分の貸出」に表示されます。</div></li>'+
+  '<li><div>読み終わったら、返却期限までに<b>本社便で本社（総務部）へ</b>返してください。本社で届いた本のQRを読み取って返却を登録します。</div></li></ol></section>'+
   '<section class="panel"><h3>困ったとき</h3><ul class="rules"><li>期限を過ぎた → すぐに返却</li><li>なくした・汚した・破いた → <b>総務部へ報告</b></li><li>間違えて借りた・返した → 登録から<b>'+S.undoMin+'分以内</b>なら、登録完了の画面か「自分の貸出」の「<b>取り消す</b>」で自分で取り消せます。過ぎた場合は<b>総務部へ連絡</b></li><li>QRが読み取れない・ラベルがはがれた → 総務部へ連絡</li><li>「保存できませんでした」→ もう一度操作。続く場合は総務部へ</li></ul></section>'+
   '<div class="notice plain"><b>総務部の管理画面について</b><span>「総務部」タブは管理者パスワードで保護されています。</span></div>';
 }
@@ -649,7 +649,7 @@ function viewAdmin(){
   var books=bookArr(), act=loanArr().filter(function(l){ return l.status==="active"; }), over=act.filter(isOver);
   var avail=books.filter(function(b){ return copyStatus(b).key==="ok"; }).length;
   var nReq=pendingReqs().length;
-  var sub=[["scan","QR読み取り"],["mail","郵送申請"+(nReq?" ("+nReq+")":"")],["overdue","期限超過 ("+over.length+")"],["history","貸出履歴"],["books","書籍台帳"],["emps","従業員"],["labels","QRラベル"],["inv","棚卸し"],["settings","設定"]];
+  var sub=[["scan","QR読み取り"],["mail","本社便申請"+(nReq?" ("+nReq+")":"")],["overdue","期限超過 ("+over.length+")"],["history","貸出履歴"],["books","書籍台帳"],["emps","従業員"],["labels","QRラベル"],["inv","棚卸し"],["settings","設定"]];
   var body={scan:aScan,mail:aMail,overdue:aOverdue,history:aHistory,books:aBooks,emps:aEmps,labels:aLabels,inv:aInv,settings:aSettings}[S.adminTab]||aScan;
   return '<div class="admin-flag"><span><b>総務部 管理画面</b>（ログイン中）</span><button class="btn sm" data-act="logout" type="button">ログアウト</button></div>'+
   '<button type="button" class="qr-btn" data-act="scanAdmin">'+QR_ICON+'<div><b>QRコードを読み取る</b><span>本の状況・借りている人の確認、返却処理、利用停止</span></div></button>'+
@@ -675,12 +675,12 @@ function aScan(){
 function statusPill(l){ return l.status==="returned"?'<span class="pill st-ok">返却済み</span>':l.status==="cancelled"?'<span class="pill st-off">取消</span>':isOver(l)?'<span class="pill st-bad">期限超過</span>':'<span class="pill st-busy">貸出中</span>'; }
 function aMail(){
   if(!S.reqs){ if(!aMail.busy){ aMail.busy=true; call("adminRequests",{token:S.token}).then(function(r){ S.reqs=r.requests; aMail.busy=false; if(!modalOpen) render(); }).catch(function(e){ aMail.busy=false; handleAdminErr(e); }); }
-    return '<div class="empty"><span class="spin"></span>　郵送申請を読み込んでいます…</div>'; }
+    return '<div class="empty"><span class="spin"></span>　本社便申請を読み込んでいます…</div>'; }
   var pend=S.reqs.filter(function(r){ return r.reqStatus==="未対応"; }), done=S.reqs.filter(function(r){ return r.reqStatus!=="未対応"; }).slice(0,30);
   function row(r){ var e=S.emps[r.empId]||{}, g=groupById(r.group)||{title:r.group};
     return '<tr><td class="mono">'+esc(r.reqNo)+'</td><td>'+esc(r.requestedAt.slice(0,16))+'</td><td>'+esc(e.name||r.empId)+'<br><span class="small muted">'+esc(e.dept||"")+'</span></td><td class="wrap">'+esc(g.title)+'</td><td class="wrap">'+esc(r.office)+(r.address?'<br><span class="small">'+esc(r.address)+'</span>':"")+(r.contact?'<br><span class="small">'+esc(r.contact)+'</span>':"")+(r.memo?'<br><span class="small muted">'+esc(r.memo)+'</span>':"")+'</td>'; }
-  return '<section class="panel"><h2>郵送申請（拠点への貸出）</h2>'+
-    '<p class="small muted">拠点の方からの申請です。申請があると '+esc("kikutake@kt-group.co.jp")+' にメールが届きます。<b>「QRを読んで発送登録」</b>で発送する本のQRラベルを読み取ると、申請者への貸出として登録されます（返却期限は発送日から'+(LOAN_DAYS+S.mailExtraDays)+'日後）。そのあと本を郵送してください。</p>'+
+  return '<section class="panel"><h2>本社便申請（拠点への貸出）</h2>'+
+    '<p class="small muted">拠点の方からの申請です。申請があると '+esc("kikutake@kt-group.co.jp")+' にメールが届きます。<b>「QRを読んで発送登録」</b>で発送する本のQRラベルを読み取ると、申請者への貸出として登録されます（返却期限は発送日から'+(LOAN_DAYS+S.mailExtraDays)+'日後）。そのあと本を本社便で送ってください。</p>'+
     (pend.length?'<div class="tbl-wrap"><table><thead><tr><th>申請番号</th><th>申請日時</th><th>申請者</th><th>書籍</th><th>送付先</th><th></th></tr></thead><tbody>'+
       pend.map(function(r){ return row(r)+'<td><div class="btn-row nowrap"><button class="btn sm primary" data-act="shipScan" data-id="'+esc(r.reqNo)+'" type="button">QRを読んで発送登録</button><button class="btn sm" data-act="reqCancel" data-id="'+esc(r.reqNo)+'" type="button">取消</button></div></td></tr>'; }).join("")+
     '</tbody></table></div>':'<div class="empty">未対応の申請はありません。</div>')+'</section>'+
@@ -693,13 +693,13 @@ function shipScanned(reqNo, id){
   var r=(S.reqs||[]).filter(function(x){ return x.reqNo===reqNo; })[0], b=S.books[id]; if(!r) return;
   var e=S.emps[r.empId]||{name:r.empId,dept:""}, g=groupById(r.group)||{title:r.group};
   if(!b){ toast("管理番号「"+id+"」の本は台帳にありません",true); return; }
-  openModal('<h2>この本を郵送で貸し出しますか？</h2>'+
+  openModal('<h2>この本を本社便で貸し出しますか？</h2>'+
     '<dl class="confirm-box"><dt>申請者</dt><dd>'+esc(e.name)+'（'+esc(e.dept)+'）</dd><dt>申請された本</dt><dd>'+esc(g.title)+'</dd><dt>読み取った本</dt><dd><span class="spine">'+esc(b.id)+'</span> '+esc(b.title)+'</dd><dt>送付先</dt><dd>'+esc(r.office)+(r.address?'<br>'+esc(r.address):"")+'</dd><dt>返却期限</dt><dd>'+jp(addDays(S.today,LOAN_DAYS+S.mailExtraDays))+'</dd></dl>'+
     (groupOf(b.id)!==r.group?'<div class="notice bad"><b>読み取った本が、申請された本と違います。</b><span>正しい本のQRを読み取ってください。</span></div>':"")+
-    '<p class="small muted">「貸出を登録する」を押したあと、本を郵送してください。</p>'+okRow("貸出を登録する"),
+    '<p class="small muted">「貸出を登録する」を押したあと、本を本社便で送ってください。</p>'+okRow("貸出を登録する"),
   function(){
     if(groupOf(b.id)!==r.group) $("mOk").disabled=true;
-    $("mOk").addEventListener("click",function(){ runSave(this,"adminShip",{token:S.token,reqNo:reqNo,bookId:id},function(x){ return "貸出を登録しました（"+x.loan.loanNo+"・"+id+"）。本を郵送してください"; },function(x){ S.reqs=x.requests; }); });
+    $("mOk").addEventListener("click",function(){ runSave(this,"adminShip",{token:S.token,reqNo:reqNo,bookId:id},function(x){ return "貸出を登録しました（"+x.loan.loanNo+"・"+id+"）。本を本社便で送ってください"; },function(x){ S.reqs=x.requests; }); });
   });
 }
 function reqCancelModal(reqNo){
@@ -770,7 +770,7 @@ function aEmps(){
   '<div class="form-grid"><div class="field"><label for="eq">氏名・事業所・役職・従業員番号で検索</label><input type="search" id="eq" value="'+esc(S.empQ||"")+'"></div>'+
   '<div class="field"><label for="eqDept">部で絞り込む</label><select id="eqDept"><option value="">すべての部</option>'+deptList(true).map(function(d){ return '<option'+(d===fd?" selected":"")+'>'+esc(d)+'</option>'; }).join("")+'</select></div></div>'+
   ((q||fd)?'<p class="small">'+grouped.length+' 名を表示しています</p>':"")+
-  (grouped.length?'<div class="tbl-wrap"><table><thead><tr><th>並び順</th><th>従業員番号</th><th>氏名</th><th>役職</th><th>所属</th><th>事業所</th><th>送付先（郵送）</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
+  (grouped.length?'<div class="tbl-wrap"><table><thead><tr><th>並び順</th><th>従業員番号</th><th>氏名</th><th>役職</th><th>所属</th><th>事業所</th><th>送付先（本社便）</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
   grouped.map(function(e){ return '<tr><td class="mono" style="white-space:nowrap">'+(sortNoLabel(e,fd)||'<span class="small muted">—</span>')+'</td><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td class="wrap">'+(e.role?esc(e.role):'<span class="small muted">—</span>')+'</td><td>'+esc(deptsOf(e).join("・"))+'</td><td class="wrap">'+(e.office?esc(e.office):'<span class="small muted">本部</span>')+'</td><td class="wrap">'+(e.shipOffice?esc(e.shipOffice)+(e.shipAddress?'<br><span class="small muted">'+esc(e.shipAddress)+'</span>':""):'<span class="small muted">—</span>')+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
   '</tbody></table></div>':'<div class="empty">条件に合う従業員はいません。</div>')+'</section>';
 }
@@ -943,17 +943,17 @@ function mailReqModal(gid){
   var e=curEmp(), g=groupById(gid); if(!g) return;
   if(!e){ pickEmpModal(); return; }
   var total=MAX_LOANS-activeOfEmp(e.id).length-pendingReqs(e.id).length, ship=e.shipOffice;
-  openModal('<h2>郵送で借りる申請</h2>'+
+  openModal('<h2>本社便で借りる申請</h2>'+
     '<dl class="confirm-box"><dt>名前</dt><dd>'+esc(e.name)+'（'+esc(e.dept)+'）</dd><dt>本</dt><dd>'+esc(g.title)+'</dd>'+
     '<dt>返却期限</dt><dd>発送日から'+(LOAN_DAYS+S.mailExtraDays)+'日後</dd>'+
     '<dt>発送先</dt><dd>'+(ship?esc(ship)+(e.shipAddress?'<br><span class="small">'+esc(e.shipAddress)+'</span>':""):'<span style="color:var(--bad)">登録されていません</span>')+'</dd></dl>'+
     (!ship?'<div class="notice bad"><b>発送先が登録されていないため、申請できません。</b><span>総務部へ連絡して、発送先を登録してもらってください。</span></div>':"")+
     (total<=0?'<div class="notice bad"><b>貸出上限（1人'+MAX_LOANS+'冊・申請中を含む）に達しています。</b><span>先に返却してください。</span></div>':"")+
-    '<p class="small muted">「申請する」を押すと、総務部の担当者にメールが届きます。本社でQRを読み取って貸出を登録し、郵送します。</p>'+okRow("申請する"),
+    '<p class="small muted">「申請する」を押すと、総務部の担当者にメールが届きます。本社でQRを読み取って貸出を登録し、本社便で送ります。</p>'+okRow("申請する"),
   function(){
     if(total<=0 || !ship) $("mOk").disabled=true;
     $("mOk").addEventListener("click",function(){
-      runSave(this,"requestMail",{empId:e.id,group:g.id},function(r){ return "申請しました（申請番号 "+r.reqNo+"）。本社からの郵送をお待ちください"; });
+      runSave(this,"requestMail",{empId:e.id,group:g.id},function(r){ return "申請しました（申請番号 "+r.reqNo+"）。本社便での到着をお待ちください"; });
     });
   });
 }
@@ -961,7 +961,7 @@ function mailReqModal(gid){
 function mailPickModal(){
   var e=curEmp(); if(!e){ pickEmpModal(); return; }
   var gs=groups().filter(function(g){ return !g.copies.every(function(c){ return copyStatus(c).viewOnly; }); });
-  openModal('<h2>郵送で借りる本を選んでください</h2>'+
+  openModal('<h2>本社便で借りる本を選んでください</h2>'+
     '<p class="small muted">貸出中・準備中の本は、今は申請できません。本の内容は「本をさがす」の「概要・身につくスキル」で確認できます。</p>'+
     '<div class="emp-pick">'+gs.map(function(g){ var ok=g.avail>0;
       return '<button type="button" data-mailpick="'+esc(g.id)+'"'+(ok?"":" disabled")+'><span class="n">'+esc(g.title)+'</span><span class="d">'+esc(g.author)+'　／　'+(ok?'借りられる '+g.avail+'冊':(g.key==="prep"?"準備中":"すべて貸出中"))+'</span></button>'; }).join("")+'</div>'+
@@ -1010,7 +1010,7 @@ function bookForm(id){
     '<div class="field full"><label for="fLoc">保管場所</label><input type="text" id="fLoc" value="'+esc(b.location)+'"></div>'+
     '<div class="field"><label for="fDate">登録日</label><input type="date" id="fDate" value="'+esc(b.registeredDate)+'"></div>'+
     (isNew?'<div class="field"><label for="fCopies">冊数（同じ本の数）</label><input type="number" id="fCopies" min="1" max="10" value="1"><span class="hint">冊数分の管理番号（-1, -2…）を作ります</span></div>'+
-      '<label class="check full" for="fPrep"><input type="checkbox" id="fPrep"><span><b>準備中として登録する</b>（現物がまだ本社にない）<br><span class="small muted">本が届いたら「書籍台帳」で「準備完了にする」を押してください。それまで、借りる・郵送の申請はできません。</span></span></label>':
+      '<label class="check full" for="fPrep"><input type="checkbox" id="fPrep"><span><b>準備中として登録する</b>（現物がまだ本社にない）<br><span class="small muted">本が届いたら「書籍台帳」で「準備完了にする」を押してください。それまで、借りる・本社便の申請はできません。</span></span></label>':
       (sameN>1?'<label class="check full" for="fGroup"><input type="checkbox" id="fGroup" checked><span>書籍名・著者・分類を同じ本の全 '+sameN+' 冊に反映する</span></label>':""))+
     '</div><p class="err" id="fErr" hidden></p>'+okRow("保存する"),
   function(){ $("mOk").addEventListener("click",function(){
@@ -1033,8 +1033,8 @@ function prepModal(ids, to){
   var title=bs[0].title;
   openModal('<h2>'+(to?"準備中にしますか？":"準備完了にしますか？")+'</h2>'+
     '<dl class="confirm-box"><dt>本</dt><dd>'+esc(title)+'</dd><dt>対象</dt><dd>'+bs.map(function(b){ return '<span class="spine">'+esc(b.id)+'</span>'; }).join(" ")+'</dd></dl>'+
-    (to?'<p class="small">現物がまだ本社にない状態にします。従業員の画面に「準備中（入荷待ち）」と表示され、<b>借りる・郵送の申請ができなくなります</b>。</p>':
-        '<p class="small">本が本社に届いた状態にします。<b>借りる・郵送の申請ができるようになります</b>（業界誌など元が「閲覧のみ」の本は、閲覧のみに戻ります）。QRラベルが貼ってあるか確認してください。</p>')+okRow(to?"準備中にする":"準備完了にする"),
+    (to?'<p class="small">現物がまだ本社にない状態にします。従業員の画面に「準備中（入荷待ち）」と表示され、<b>借りる・本社便の申請ができなくなります</b>。</p>':
+        '<p class="small">本が本社に届いた状態にします。<b>借りる・本社便の申請ができるようになります</b>（業界誌など元が「閲覧のみ」の本は、閲覧のみに戻ります）。QRラベルが貼ってあるか確認してください。</p>')+okRow(to?"準備中にする":"準備完了にする"),
   function(){ $("mOk").addEventListener("click",function(){ runSave(this,"setPreparing",{token:S.token,bookIds:ids,preparing:!!to},function(r){ return (to?"準備中にしました：":"準備完了にしました（貸出できます）：")+r.changed.join("、"); }); }); });
 }
 function bookToggle(id){
@@ -1057,8 +1057,8 @@ function empForm(id){
     '<input type="text" id="eDeptOther" style="margin-top:8px" placeholder="一覧にない部のときだけ入力（例：〇〇部）" value="'+esc(other.join("、"))+'"></div>'+
     '<div class="field full"><span class="small"><b>部ごとの並び順</b>（小さい数字ほど、名前を選ぶ画面の上に出ます。空欄なら後ろ）</span><div class="dept-checks" id="eSortBox"></div></div>'+
     '<div class="field full"><label for="eOffice">事業所<span class="small muted">（本部の人は空欄）</span></label><input type="text" id="eOffice" list="officeList" value="'+esc(e.office||"")+'"><datalist id="officeList">'+Object.keys(offices).sort(function(a,b){ return a.localeCompare(b,"ja"); }).map(function(o){ return '<option value="'+esc(o)+'">'; }).join("")+'</datalist><span class="hint">一覧から選ぶと表記がそろいます。送付先が空欄なら、同じ事業所の人の送付先が自動で入ります</span></div>'+
-    '<div class="field full"><label for="eShip">送付先（拠点名）<span class="small muted">（郵送で借りる拠点の方は入力）</span></label><input type="text" id="eShip" placeholder="例：福岡事業所" value="'+esc(e.shipOffice||"")+'"></div>'+
-    '<div class="field full"><label for="eShipAddr">送付先の住所・連絡先<span class="small muted">（社内便の場合は不要）</span></label><input type="text" id="eShipAddr" placeholder="例：福岡市博多区○○1-2-3　TEL 092-000-0000" value="'+esc(e.shipAddress||"")+'"></div>'+
+    '<div class="field full"><label for="eShip">送付先（拠点名）<span class="small muted">（本社便で借りる拠点の方は入力）</span></label><input type="text" id="eShip" placeholder="例：福岡事業所" value="'+esc(e.shipOffice||"")+'"></div>'+
+    '<div class="field full"><label for="eShipAddr">送付先の住所・連絡先<span class="small muted">（拠点名だけで届く場合は不要）</span></label><input type="text" id="eShipAddr" placeholder="例：福岡市博多区○○1-2-3　TEL 092-000-0000" value="'+esc(e.shipAddress||"")+'"></div>'+
     '<label class="check full" for="eActive"><input type="checkbox" id="eActive"'+(e.active?" checked":"")+'><span><b>利用可能</b>（外すと停止）</span></label></div>'+okRow("保存する"),
   function(){
     var sm=sortMap(e);
@@ -1127,7 +1127,7 @@ document.addEventListener("click",function(ev){
     asUser:function(){ userScanned(id); },
     mailReq:function(){ mailReqModal(id); },
     mailPick:mailPickModal,
-    shipScan:function(){ var no=id; openScanner({title:"発送する本のQRを読み取る",help:"郵送する本のQRラベルを枠の中に写してください。",manual:true,onCode:function(code){ shipScanned(no,code); }}); },
+    shipScan:function(){ var no=id; openScanner({title:"発送する本のQRを読み取る",help:"本社便で送る本のQRラベルを枠の中に写してください。",manual:true,onCode:function(code){ shipScanned(no,code); }}); },
     reqCancel:function(){ reqCancelModal(id); },
     introEdit:function(){ introForm(id); },
     selfUndo:function(){ undoModal(id); },

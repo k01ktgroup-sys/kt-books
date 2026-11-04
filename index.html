@@ -308,11 +308,17 @@ function deptRank(d){ var i=(S.deptOrder||[]).indexOf(d); return i<0?999:i; }
 function sortDepts(a){ return a.sort(function(x,y){ var rx=deptRank(x), ry=deptRank(y); return rx!==ry?rx-ry:x.localeCompare(y,"ja"); }); }
 function deptList(all){ var seen={}, out=[]; (all?empArr():activeEmps()).forEach(function(x){ deptsOf(x).forEach(function(d){ if(!seen[d]){ seen[d]=1; out.push(d); } }); }); return sortDepts(out); }
 function byId(a,b){ return a.id<b.id?-1:a.id>b.id?1:0; }
-function sortNoOf(x){ var n=parseInt(x.sortNo,10); return isNaN(n)?1e9:n; }
+/* 並び順は部ごと：「役員:1、人材戦略部:5」。数字だけなら全部の部で同じ番号。ない部は 1e9（後ろ） */
+function sortMap(x){ var s=String(x.sortNo||"").trim(), m={}; if(!s) return m;
+  if(/^\d+$/.test(s)){ m["*"]=parseInt(s,10); return m; }
+  s.split("、").forEach(function(p){ var j=p.lastIndexOf(":"); if(j>0){ var n=parseInt(p.slice(j+1),10); if(!isNaN(n)) m[p.slice(0,j).trim()]=n; } });
+  return m; }
+function sortNoOf(x,d){ var m=sortMap(x); return d in m ? m[d] : ("*" in m ? m["*"] : 1e9); }
+function sortNoLabel(e,only){ return (only?[only]:deptsOf(e)).map(function(d){ var n=sortNoOf(e,d); return n<1e9 ? (only?String(n):esc(d)+" "+n) : null; }).filter(Boolean).join("<br>"); }
 function sortInDept(list,d){
   var first={}; list.slice().sort(byId).forEach(function(x){ var o=x.office||""; if(!(o in first)) first[o]=x.id; });
   return list.sort(function(a,b){ var oa=a.office||"", ob=b.office||"";
-    var sa=sortNoOf(a), sb=sortNoOf(b); if(sa!==sb) return sa-sb;        // 並び順の数字が小さい人が先（空欄の人は後ろ）
+    var sa=sortNoOf(a,d), sb=sortNoOf(b,d); if(sa!==sb) return sa-sb;       // 並び順の数字が小さい人が先（空欄の人は後ろ）
     if(!oa!==!ob) return oa?1:-1;                                        // 本部の人（事業所なし）が先
     if(oa!==ob) return first[oa]<first[ob]?-1:1;                         // 事業所は登録順
     if(!oa){ var pa=deptsOf(a)[0]===d?0:1, pb=deptsOf(b)[0]===d?0:1; if(pa!==pb) return pa-pb; } // 兼務の人は後
@@ -756,14 +762,16 @@ function aEmps(){
   rows.sort(function(a,b){ if(a.active!==b.active) return a.active?-1:1;
     var da=deptsOf(a)[0], db=deptsOf(b)[0]; if(da!==db) return deptRank(da)-deptRank(db)||da.localeCompare(db,"ja");
     return 0; });
-  var grouped=[], i=0; while(i<rows.length){ var j=i, d=deptsOf(rows[i])[0], act=rows[i].active; while(j<rows.length && deptsOf(rows[j])[0]===d && rows[j].active===act) j++; grouped=grouped.concat(sortInDept(rows.slice(i,j),d)); i=j; }
+  var grouped=[], i=0;
+  if(fd){ grouped=sortInDept(rows.filter(function(e){ return e.active; }),fd).concat(sortInDept(rows.filter(function(e){ return !e.active; }),fd)); i=rows.length; } // 部で絞り込んだときは、その部の並び順
+  while(i<rows.length){ var j=i, d=deptsOf(rows[i])[0], act=rows[i].active; while(j<rows.length && deptsOf(rows[j])[0]===d && rows[j].active===act) j++; grouped=grouped.concat(sortInDept(rows.slice(i,j),d)); i=j; }
   return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>従業員一覧（'+all.length+'名）</h2><button class="btn sm primary" data-act="empNew" type="button">＋ 従業員を登録</button></div>'+
   '<p class="small muted">「停止」にした従業員は名前の選択肢に表示されず、貸出できません。退職者は削除せず停止にしてください（貸出の記録が残ります）。異動したときは「編集」で所属・事業所を変えてください。</p>'+
   '<div class="form-grid"><div class="field"><label for="eq">氏名・事業所・役職・従業員番号で検索</label><input type="search" id="eq" value="'+esc(S.empQ||"")+'"></div>'+
   '<div class="field"><label for="eqDept">部で絞り込む</label><select id="eqDept"><option value="">すべての部</option>'+deptList(true).map(function(d){ return '<option'+(d===fd?" selected":"")+'>'+esc(d)+'</option>'; }).join("")+'</select></div></div>'+
   ((q||fd)?'<p class="small">'+grouped.length+' 名を表示しています</p>':"")+
   (grouped.length?'<div class="tbl-wrap"><table><thead><tr><th>並び順</th><th>従業員番号</th><th>氏名</th><th>役職</th><th>所属</th><th>事業所</th><th>送付先（郵送）</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
-  grouped.map(function(e){ return '<tr><td class="mono">'+(e.sortNo?esc(e.sortNo):'<span class="small muted">—</span>')+'</td><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td class="wrap">'+(e.role?esc(e.role):'<span class="small muted">—</span>')+'</td><td>'+esc(deptsOf(e).join("・"))+'</td><td class="wrap">'+(e.office?esc(e.office):'<span class="small muted">本部</span>')+'</td><td class="wrap">'+(e.shipOffice?esc(e.shipOffice)+(e.shipAddress?'<br><span class="small muted">'+esc(e.shipAddress)+'</span>':""):'<span class="small muted">—</span>')+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
+  grouped.map(function(e){ return '<tr><td class="mono" style="white-space:nowrap">'+(sortNoLabel(e,fd)||'<span class="small muted">—</span>')+'</td><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td class="wrap">'+(e.role?esc(e.role):'<span class="small muted">—</span>')+'</td><td>'+esc(deptsOf(e).join("・"))+'</td><td class="wrap">'+(e.office?esc(e.office):'<span class="small muted">本部</span>')+'</td><td class="wrap">'+(e.shipOffice?esc(e.shipOffice)+(e.shipAddress?'<br><span class="small muted">'+esc(e.shipAddress)+'</span>':""):'<span class="small muted">—</span>')+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
   '</tbody></table></div>':'<div class="empty">条件に合う従業員はいません。</div>')+'</section>';
 }
 function aLabels(){
@@ -1045,20 +1053,31 @@ function empForm(id){
     '<div class="field"><label for="eId">従業員番号'+(id?"":'<span class="small muted">（ない場合は空欄）</span>')+'</label><input type="text" id="eId" value="'+esc(e.id)+'"'+(id?" readonly":' placeholder="空欄なら自動（A0001〜）"')+'>'+(id?"":'<span class="hint">空欄のときは A0001 から順に自動で番号を付けます</span>')+'</div>'+
     '<div class="field"><label for="eName">氏名</label><input type="text" id="eName" value="'+esc(e.name)+'"></div>'+
     '<div class="field"><label for="eRole">役職<span class="small muted">（総務部の画面だけに表示）</span></label><input type="text" id="eRole" placeholder="例：マネジャー" value="'+esc(e.role||"")+'"></div>'+
-    '<div class="field"><label for="eSort">並び順<span class="small muted">（小さい数字ほど上）</span></label><input type="number" id="eSort" min="1" max="9999" inputmode="numeric" value="'+esc(e.sortNo||"")+'"><span class="hint">名前を選ぶ画面で、部の中の並ぶ位置になります（空欄なら後ろ）</span></div>'+
     '<div class="field full"><label for="eD0">所属（部）<span class="small muted">　兼務の人は複数選べます</span></label><div class="dept-checks">'+known.map(function(d,i){ return '<label for="eD'+i+'"><input type="checkbox" id="eD'+i+'" data-dept-check="'+esc(d)+'"'+(mine.indexOf(d)>=0?" checked":"")+'>'+esc(d)+'</label>'; }).join("")+'</div>'+
     '<input type="text" id="eDeptOther" style="margin-top:8px" placeholder="一覧にない部のときだけ入力（例：〇〇部）" value="'+esc(other.join("、"))+'"></div>'+
+    '<div class="field full"><span class="small"><b>部ごとの並び順</b>（小さい数字ほど、名前を選ぶ画面の上に出ます。空欄なら後ろ）</span><div class="dept-checks" id="eSortBox"></div></div>'+
     '<div class="field full"><label for="eOffice">事業所<span class="small muted">（本部の人は空欄）</span></label><input type="text" id="eOffice" list="officeList" value="'+esc(e.office||"")+'"><datalist id="officeList">'+Object.keys(offices).sort(function(a,b){ return a.localeCompare(b,"ja"); }).map(function(o){ return '<option value="'+esc(o)+'">'; }).join("")+'</datalist><span class="hint">一覧から選ぶと表記がそろいます。送付先が空欄なら、同じ事業所の人の送付先が自動で入ります</span></div>'+
     '<div class="field full"><label for="eShip">送付先（拠点名）<span class="small muted">（郵送で借りる拠点の方は入力）</span></label><input type="text" id="eShip" placeholder="例：福岡事業所" value="'+esc(e.shipOffice||"")+'"></div>'+
     '<div class="field full"><label for="eShipAddr">送付先の住所・連絡先<span class="small muted">（社内便の場合は不要）</span></label><input type="text" id="eShipAddr" placeholder="例：福岡市博多区○○1-2-3　TEL 092-000-0000" value="'+esc(e.shipAddress||"")+'"></div>'+
     '<label class="check full" for="eActive"><input type="checkbox" id="eActive"'+(e.active?" checked":"")+'><span><b>利用可能</b>（外すと停止）</span></label></div>'+okRow("保存する"),
   function(){
+    var sm=sortMap(e);
+    function sortBox(){   // チェックした部ごとに並び順の欄を出す（入力中の値は残す）
+      var box=$("eSortBox"), cur={};
+      box.querySelectorAll("[data-sort-dept]").forEach(function(i){ cur[i.getAttribute("data-sort-dept")]=i.value; });
+      var ds=[].slice.call($("modalRoot").querySelectorAll("[data-dept-check]")).filter(function(c){ return c.checked; }).map(function(c){ return c.getAttribute("data-dept-check"); });
+      box.innerHTML=ds.length?ds.map(function(d,i){ var v=(d in cur)?cur[d]:(d in sm?sm[d]:("*" in sm?sm["*"]:""));
+        return '<label for="eS'+i+'">'+esc(d)+'<input type="number" id="eS'+i+'" data-sort-dept="'+esc(d)+'" min="1" max="9999" inputmode="numeric" style="width:84px;height:auto;margin-left:auto" value="'+esc(v)+'"></label>'; }).join(""):'<span class="small muted">所属を選ぶと、ここに部ごとの欄が出ます</span>';
+    }
+    sortBox();
+    $("modalRoot").querySelectorAll("[data-dept-check]").forEach(function(c){ c.addEventListener("change",sortBox); });
     $("eOffice").addEventListener("change",function(){ var src=offices[this.value.trim()];
       if(src && !$("eShip").value.trim() && !$("eShipAddr").value.trim()){ $("eShip").value=src.shipOffice||""; $("eShipAddr").value=src.shipAddress||""; } });
     $("mOk").addEventListener("click",function(){
     var depts=[].slice.call($("modalRoot").querySelectorAll("[data-dept-check]")).filter(function(c){ return c.checked; }).map(function(c){ return c.getAttribute("data-dept-check"); });
     if($("eDeptOther").value.trim()) depts.push($("eDeptOther").value.trim());
-    runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:depts.join("、"),office:$("eOffice").value,role:$("eRole").value,sortNo:$("eSort").value,active:$("eActive").checked,shipOffice:$("eShip").value,shipAddress:$("eShipAddr").value}},(function(nm){ return function(r){ return "従業員を保存しました："+nm+"（従業員番号 "+((r&&r.id)||"")+"）"; }; })($("eName").value.trim())); }); });
+    var sortNo=[].slice.call($("eSortBox").querySelectorAll("[data-sort-dept]")).filter(function(i){ return i.value.trim(); }).map(function(i){ return i.getAttribute("data-sort-dept")+":"+i.value.trim(); }).join("、");
+    runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:depts.join("、"),office:$("eOffice").value,role:$("eRole").value,sortNo:sortNo,active:$("eActive").checked,shipOffice:$("eShip").value,shipAddress:$("eShipAddr").value}},(function(nm){ return function(r){ return "従業員を保存しました："+nm+"（従業員番号 "+((r&&r.id)||"")+"）"; }; })($("eName").value.trim())); }); });
 }
 function empToggle(id){
   var e=S.emps[id], to=!e.active, n=activeOfEmp(id).length;

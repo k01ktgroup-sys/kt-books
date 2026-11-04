@@ -274,8 +274,10 @@ function applyState(st){
   S.mailReqs=st.mailReqs||[]; S.mailExtraDays=st.mailExtraDays||7; S.undoMin=st.selfUndoMin||10; S.deptOrder=st.deptOrder||[];
   S.loaded=true; S.loadErr=null;
 }
+/* 総務部でログイン中なら、役職も受け取るためにログイン情報を付けて読み込む */
+function stateArgs(){ return S.token ? {token:S.token} : {}; }
 function refresh(){
-  return call("state").then(function(st){ applyState(st); if(!modalOpen) render(); else renderHeader(); })
+  return call("state",stateArgs()).then(function(st){ applyState(st); if(!modalOpen) render(); else renderHeader(); })
     .catch(function(e){ if(!S.loaded){ S.loadErr=e; render(); } });
 }
 
@@ -306,9 +308,11 @@ function deptRank(d){ var i=(S.deptOrder||[]).indexOf(d); return i<0?999:i; }
 function sortDepts(a){ return a.sort(function(x,y){ var rx=deptRank(x), ry=deptRank(y); return rx!==ry?rx-ry:x.localeCompare(y,"ja"); }); }
 function deptList(all){ var seen={}, out=[]; (all?empArr():activeEmps()).forEach(function(x){ deptsOf(x).forEach(function(d){ if(!seen[d]){ seen[d]=1; out.push(d); } }); }); return sortDepts(out); }
 function byId(a,b){ return a.id<b.id?-1:a.id>b.id?1:0; }
+function sortNoOf(x){ var n=parseInt(x.sortNo,10); return isNaN(n)?1e9:n; }
 function sortInDept(list,d){
   var first={}; list.slice().sort(byId).forEach(function(x){ var o=x.office||""; if(!(o in first)) first[o]=x.id; });
   return list.sort(function(a,b){ var oa=a.office||"", ob=b.office||"";
+    var sa=sortNoOf(a), sb=sortNoOf(b); if(sa!==sb) return sa-sb;        // 並び順の数字が小さい人が先（空欄の人は後ろ）
     if(!oa!==!ob) return oa?1:-1;                                        // 本部の人（事業所なし）が先
     if(oa!==ob) return first[oa]<first[ob]?-1:1;                         // 事業所は登録順
     if(!oa){ var pa=deptsOf(a)[0]===d?0:1, pb=deptsOf(b)[0]===d?0:1; if(pa!==pb) return pa-pb; } // 兼務の人は後
@@ -746,7 +750,7 @@ function aEmps(){
   var all=empArr(), q=(S.empQ||"").trim().toLowerCase(), fd=S.empDept||"";
   var rows=all.filter(function(e){
     if(fd && !inDept(e,fd)) return false;
-    if(q && (e.id+" "+e.name+" "+e.dept+" "+(e.office||"")+" "+(e.shipOffice||"")).toLowerCase().indexOf(q)<0) return false;
+    if(q && (e.id+" "+e.name+" "+e.dept+" "+(e.office||"")+" "+(e.role||"")+" "+(e.shipOffice||"")).toLowerCase().indexOf(q)<0) return false;
     return true; });
   // 利用可能な人 → 停止中の人。その中は部（組織図の順）→ 本部の人・事業所ごと
   rows.sort(function(a,b){ if(a.active!==b.active) return a.active?-1:1;
@@ -755,11 +759,11 @@ function aEmps(){
   var grouped=[], i=0; while(i<rows.length){ var j=i, d=deptsOf(rows[i])[0], act=rows[i].active; while(j<rows.length && deptsOf(rows[j])[0]===d && rows[j].active===act) j++; grouped=grouped.concat(sortInDept(rows.slice(i,j),d)); i=j; }
   return '<section class="panel"><div class="btn-row" style="justify-content:space-between;align-items:center"><h2>従業員一覧（'+all.length+'名）</h2><button class="btn sm primary" data-act="empNew" type="button">＋ 従業員を登録</button></div>'+
   '<p class="small muted">「停止」にした従業員は名前の選択肢に表示されず、貸出できません。退職者は削除せず停止にしてください（貸出の記録が残ります）。異動したときは「編集」で所属・事業所を変えてください。</p>'+
-  '<div class="form-grid"><div class="field"><label for="eq">氏名・事業所・従業員番号で検索</label><input type="search" id="eq" value="'+esc(S.empQ||"")+'"></div>'+
+  '<div class="form-grid"><div class="field"><label for="eq">氏名・事業所・役職・従業員番号で検索</label><input type="search" id="eq" value="'+esc(S.empQ||"")+'"></div>'+
   '<div class="field"><label for="eqDept">部で絞り込む</label><select id="eqDept"><option value="">すべての部</option>'+deptList(true).map(function(d){ return '<option'+(d===fd?" selected":"")+'>'+esc(d)+'</option>'; }).join("")+'</select></div></div>'+
   ((q||fd)?'<p class="small">'+grouped.length+' 名を表示しています</p>':"")+
-  (grouped.length?'<div class="tbl-wrap"><table><thead><tr><th>従業員番号</th><th>氏名</th><th>所属</th><th>事業所</th><th>送付先（郵送）</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
-  grouped.map(function(e){ return '<tr><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td>'+esc(deptsOf(e).join("・"))+'</td><td class="wrap">'+(e.office?esc(e.office):'<span class="small muted">本部</span>')+'</td><td class="wrap">'+(e.shipOffice?esc(e.shipOffice)+(e.shipAddress?'<br><span class="small muted">'+esc(e.shipAddress)+'</span>':""):'<span class="small muted">—</span>')+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
+  (grouped.length?'<div class="tbl-wrap"><table><thead><tr><th>並び順</th><th>従業員番号</th><th>氏名</th><th>役職</th><th>所属</th><th>事業所</th><th>送付先（郵送）</th><th>状態</th><th>貸出中</th><th></th></tr></thead><tbody>'+
+  grouped.map(function(e){ return '<tr><td class="mono">'+(e.sortNo?esc(e.sortNo):'<span class="small muted">—</span>')+'</td><td class="mono">'+esc(e.id)+'</td><td>'+esc(e.name)+chip(e)+'</td><td class="wrap">'+(e.role?esc(e.role):'<span class="small muted">—</span>')+'</td><td>'+esc(deptsOf(e).join("・"))+'</td><td class="wrap">'+(e.office?esc(e.office):'<span class="small muted">本部</span>')+'</td><td class="wrap">'+(e.shipOffice?esc(e.shipOffice)+(e.shipAddress?'<br><span class="small muted">'+esc(e.shipAddress)+'</span>':""):'<span class="small muted">—</span>')+'</td><td>'+(e.active?'<span class="pill st-ok">利用可能</span>':'<span class="pill st-off">停止</span>')+'</td><td>'+activeOfEmp(e.id).length+' 冊</td><td><div class="btn-row nowrap"><button class="btn sm" data-act="empEdit" data-id="'+esc(e.id)+'" type="button">編集</button><button class="btn sm" data-act="empToggle" data-id="'+esc(e.id)+'" type="button">'+(e.active?"停止する":"利用可能にする")+'</button></div></td></tr>'; }).join("")+
   '</tbody></table></div>':'<div class="empty">条件に合う従業員はいません。</div>')+'</section>';
 }
 function aLabels(){
@@ -1040,6 +1044,8 @@ function empForm(id){
   openModal('<h2>'+(id?"従業員を編集":"従業員を登録")+'</h2><div class="form-grid">'+
     '<div class="field"><label for="eId">従業員番号'+(id?"":'<span class="small muted">（ない場合は空欄）</span>')+'</label><input type="text" id="eId" value="'+esc(e.id)+'"'+(id?" readonly":' placeholder="空欄なら自動（A0001〜）"')+'>'+(id?"":'<span class="hint">空欄のときは A0001 から順に自動で番号を付けます</span>')+'</div>'+
     '<div class="field"><label for="eName">氏名</label><input type="text" id="eName" value="'+esc(e.name)+'"></div>'+
+    '<div class="field"><label for="eRole">役職<span class="small muted">（総務部の画面だけに表示）</span></label><input type="text" id="eRole" placeholder="例：マネジャー" value="'+esc(e.role||"")+'"></div>'+
+    '<div class="field"><label for="eSort">並び順<span class="small muted">（小さい数字ほど上）</span></label><input type="number" id="eSort" min="1" max="9999" inputmode="numeric" value="'+esc(e.sortNo||"")+'"><span class="hint">名前を選ぶ画面で、部の中の並ぶ位置になります（空欄なら後ろ）</span></div>'+
     '<div class="field full"><label for="eD0">所属（部）<span class="small muted">　兼務の人は複数選べます</span></label><div class="dept-checks">'+known.map(function(d,i){ return '<label for="eD'+i+'"><input type="checkbox" id="eD'+i+'" data-dept-check="'+esc(d)+'"'+(mine.indexOf(d)>=0?" checked":"")+'>'+esc(d)+'</label>'; }).join("")+'</div>'+
     '<input type="text" id="eDeptOther" style="margin-top:8px" placeholder="一覧にない部のときだけ入力（例：〇〇部）" value="'+esc(other.join("、"))+'"></div>'+
     '<div class="field full"><label for="eOffice">事業所<span class="small muted">（本部の人は空欄）</span></label><input type="text" id="eOffice" list="officeList" value="'+esc(e.office||"")+'"><datalist id="officeList">'+Object.keys(offices).sort(function(a,b){ return a.localeCompare(b,"ja"); }).map(function(o){ return '<option value="'+esc(o)+'">'; }).join("")+'</datalist><span class="hint">一覧から選ぶと表記がそろいます。送付先が空欄なら、同じ事業所の人の送付先が自動で入ります</span></div>'+
@@ -1052,7 +1058,7 @@ function empForm(id){
     $("mOk").addEventListener("click",function(){
     var depts=[].slice.call($("modalRoot").querySelectorAll("[data-dept-check]")).filter(function(c){ return c.checked; }).map(function(c){ return c.getAttribute("data-dept-check"); });
     if($("eDeptOther").value.trim()) depts.push($("eDeptOther").value.trim());
-    runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:depts.join("、"),office:$("eOffice").value,active:$("eActive").checked,shipOffice:$("eShip").value,shipAddress:$("eShipAddr").value}},(function(nm){ return function(r){ return "従業員を保存しました："+nm+"（従業員番号 "+((r&&r.id)||"")+"）"; }; })($("eName").value.trim())); }); });
+    runSave(this,"saveEmp",{token:S.token,isNew:!id,rec:{id:$("eId").value,name:$("eName").value,dept:depts.join("、"),office:$("eOffice").value,role:$("eRole").value,sortNo:$("eSort").value,active:$("eActive").checked,shipOffice:$("eShip").value,shipAddress:$("eShipAddr").value}},(function(nm){ return function(r){ return "従業員を保存しました："+nm+"（従業員番号 "+((r&&r.id)||"")+"）"; }; })($("eName").value.trim())); }); });
 }
 function empToggle(id){
   var e=S.emps[id], to=!e.active, n=activeOfEmp(id).length;
@@ -1133,7 +1139,7 @@ document.addEventListener("submit",function(ev){
   if(ev.target.id!=="loginForm") return;
   ev.preventDefault();
   var btn=$("loginBtn"), pw=$("pw").value; btn.disabled=true; btn.innerHTML='<span class="spin"></span> 確認しています…';
-  call("login",{password:pw}).then(function(r){ S.token=r.token; try{ localStorage.setItem(LS_TOKEN,r.token); }catch(e){} render(); toast("ログインしました"); })
+  call("login",{password:pw}).then(function(r){ S.token=r.token; try{ localStorage.setItem(LS_TOKEN,r.token); }catch(e){} render(); toast("ログインしました"); refresh(); })
     .catch(function(e){ btn.disabled=false; btn.textContent="ログイン"; var er=$("loginErr"); er.hidden=false; er.textContent=e.userMessage||"ログインできませんでした（"+e.code+"）。通信状態を確認してください。"; });
 });
 document.addEventListener("input",function(ev){
@@ -1155,7 +1161,7 @@ setInterval(function(){ if(document.visibilityState==="visible" && !modalOpen) r
 /* ---------- boot ---------- */
 var initialCopy=null;
 function boot(){
-  call("state").then(function(st){
+  call("state",stateArgs()).then(function(st){
     applyState(st);
     var check = S.token
       ? call("checkToken",{token:S.token}).then(function(){ return true; }, function(){ S.token=null; try{ localStorage.removeItem(LS_TOKEN); }catch(e){} return false; })

@@ -231,7 +231,7 @@ ul.rules{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px}
 var MAX_LOANS=2, MAX_EXT=0, LOAN_DAYS=14, EXT_DAYS=14;  /* KTライブラリ：連続14日間まで（延長なし） */
 /* 業界誌（週刊の新聞）：新聞ラックのバーにQR。返却は借りた日の翌日まで（当日返却を推奨）。本の2冊には数えず1人1部まで。本社便なし */
 var NEWS={category:"業界誌",days:1,max:1};
-var NEWS_NOTE="新聞は<b>借りた日の翌日まで</b>に返してください。多くの方が読めるよう、<b>当日中の返却</b>をおすすめします。必要な記事は各自でコピーしてください。";
+var NEWS_NOTE="新聞は<b>借りた日の翌日まで</b>に返してください。多くの方が読めるよう、<b>当日中の返却</b>にご協力をお願いします。必要な記事は各自でコピーしてください。";
 var LS_EMP="shoko.emp", LS_TOKEN="shoko.adminToken";
 /* Inside Apps Script the page talks to the server through google.script.run.
    Hosted elsewhere (the admin page on GitHub Pages, where the camera works) it POSTs to the published web app instead. */
@@ -439,7 +439,7 @@ function countsHtml(g){
   var prep=g.copies.filter(function(c){ return copyStatus(c).preparing; }).length;
   if(prep===g.copies.length) return '<span class="pill st-busy">準備中（入荷待ち）</span><span class="small muted">本社に届き次第、借りられるようになります</span>';
   var lent=g.copies.map(function(c){ return copyStatus(c).loan; }).filter(Boolean).sort(function(a,b){ return a.dueDate<b.dueDate?-1:1; });
-  return '<span class="pill '+(g.avail?"st-ok":"st-off")+'">借りられる '+g.avail+(isNews(g.copies[0])?'部':'冊')+'</span>'+(isNews(g.copies[0])?'<span class="small muted">翌日までに返却（当日返却をおすすめします）・本社便なし</span>':"")+
+  return '<span class="pill '+(g.avail?"st-ok":"st-off")+'">借りられる '+g.avail+(isNews(g.copies[0])?'部':'冊')+'</span>'+(isNews(g.copies[0])?'<span class="small muted">翌日までに返却（当日中の返却にご協力をお願いします）・本社便なし</span>':"")+
     (prep?'<span class="pill st-off">準備中 '+prep+'冊</span>':"")+(lent.length?'<span class="pill st-busy">貸出中 '+lent.length+'冊</span><span class="small muted">返却予定 '+lent.map(function(l){ return '<span class="mono">'+esc(l.dueDate.slice(5).replace("-","/"))+'</span>'; }).join("・")+'</span>':"");
 }
 function jstMs(s){ var m=/(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)/.exec(String(s||"")); return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]-9,+m[5],+m[6]):0; }
@@ -611,7 +611,7 @@ function viewMine(){
   var cards=act.length?act.map(function(l){
     var over=t>l.dueDate, left=diffDays(t,l.dueDate), b=S.books[l.bookId]||{};
     var lt=over?'<span class="left bad">期限を '+(-left)+' 日過ぎています</span>':left===0?'<span class="left busy">今日が返却期限です</span>':'<span class="left '+(left<=3?"busy":"ok")+'">あと '+left+' 日</span>';
-    var extNote=isNews(b)?"新聞は延長できません（借りた日の翌日まで。当日返却をおすすめします）":MAX_EXT===0?"延長はできません（連続14日間まで）":l.extensions>=MAX_EXT?"延長済み（延長は1回まで）":over?"期限超過のため延長できません":"あと1回延長できます（元の期限＋14日）";
+    var extNote=isNews(b)?"新聞は延長できません（借りた日の翌日まで。当日中の返却にご協力をお願いします）":MAX_EXT===0?"延長はできません（連続14日間まで）":l.extensions>=MAX_EXT?"延長済み（延長は1回まで）":over?"期限超過のため延長できません":"あと1回延長できます（元の期限＋14日）";
     return '<article class="loan'+(over?" over":"")+'">'+(over?'<div class="notice bad"><b>返却期限を過ぎています。すぐに指定の書棚へ戻し、返却登録をしてください。</b></div>':"")+
       '<div class="copy-head"><span class="spine">'+esc(l.bookId)+'</span><b>'+esc(bookTitle(l.bookId))+'</b></div>'+
       '<div class="due"><span class="muted small">返却期限</span><span class="d">'+jp(l.dueDate)+'</span>'+lt+'</div>'+
@@ -634,7 +634,7 @@ function viewRules(){
   '<p>コア人材の成長に役立つ書籍を会社が選定し、閲読をすすめる制度です。書籍は<b>本社ビル8階のKTライブラリ</b>に置いています。コア人材は自由に閲覧でき、<b>連続14日間まで</b>借りることができます。本社以外（拠点）の方は、本社便で借りる申請ができます。</p>'+
   '<div class="grid2"><div class="notice info"><b>目的・期待される効果</b><span>① 生産性の向上：コア人材の成長促進（人格形成、ビジネススキル・テクニックの習得）、社内コミュニケーションの円滑化（共通言語・共通認識の形成）</span><span>② 教育コストの抑制</span></div>'+
   '<div class="notice warn"><b>課題図書</b><span>KTライブラリの書籍のうち、上長が部下（コア人材に限る）に読了を求めるものです。個人の成長と、組織の共通言語・共通認識づくりが目的です。</span><span><b>『リーダーの仮面』は全管理職の課題図書です。</b></span></div></div></section>'+
-  '<div class="grid2"><section class="panel"><h3>貸出ルール</h3><ul class="rules"><li>利用できるのは<b>コア人材</b>です</li><li>貸出は<b>連続14日間まで</b>（延長はありません）。本社便の場合は<b>発送日から'+(LOAN_DAYS+(S.mailExtraDays||7))+'日間</b>です</li><li>1人<b>'+MAX_LOANS+'冊まで</b>（本社便の申請中を含みます）</li><li>借りる・返すは、<b>本のQRラベルを読み取って</b>行います（本が手元にないときは操作できません。本社便の場合は、発送と返却のときに本社でQRを読み取ります）</li><li>業界誌（高齢者住宅新聞・シルバー新報）は、本社ビル8階の書庫の<b>新聞ラック</b>にあります（各3週分）。返却は<b>借りた日の翌日まで</b>で、多くの方が読めるよう<b>当日中の返却</b>をおすすめします。必要な記事は各自でコピーしてください。新聞は本の2冊とは別に1人'+NEWS.max+'部まで、本社便では借りられません</li><li>「準備中」の本は、本社に届くまで借りる・本社便の申請はできません</li><li><b>必ずご自身の名前を選んでください。他の人の名前で借りたり返したりしないでください。</b></li></ul></section>'+
+  '<div class="grid2"><section class="panel"><h3>貸出ルール</h3><ul class="rules"><li>利用できるのは<b>コア人材</b>です</li><li>貸出は<b>連続14日間まで</b>（延長はありません）。本社便の場合は<b>発送日から'+(LOAN_DAYS+(S.mailExtraDays||7))+'日間</b>です</li><li>1人<b>'+MAX_LOANS+'冊まで</b>（本社便の申請中を含みます）</li><li>借りる・返すは、<b>本のQRラベルを読み取って</b>行います（本が手元にないときは操作できません。本社便の場合は、発送と返却のときに本社でQRを読み取ります）</li><li>業界誌（高齢者住宅新聞・シルバー新報）は、本社ビル8階の書庫の<b>新聞ラック</b>にあります（各3週分）。返却は<b>借りた日の翌日まで</b>で、多くの方が読めるよう、<b>当日中の返却</b>にご協力をお願いします。必要な記事は各自でコピーしてください。新聞は本の2冊とは別に1人'+NEWS.max+'部まで、本社便では借りられません</li><li>「準備中」の本は、本社に届くまで借りる・本社便の申請はできません</li><li><b>必ずご自身の名前を選んでください。他の人の名前で借りたり返したりしないでください。</b></li></ul></section>'+
   '<section class="panel"><h3>書籍の選定と管理</h3><ul class="rules"><li><b>選定</b>：社長（読みたい本・おすすめの本は、<b>上長を通して</b>誰でも提案できます）</li><li><b>発注・貸出管理</b>：総務部</li><li>棚卸しは3か月に1回、総務部が行います</li></ul></section></div>'+
   '<section class="panel"><h2>本社での借り方・返し方</h2><ol class="steps">'+
   '<li><div>KTライブラリで本を手に取り、<b>本のQRラベル</b>をスマートフォンのカメラ（またはこの画面の「QRコードで借りる・返す」）で読み取ります。</div></li>'+
